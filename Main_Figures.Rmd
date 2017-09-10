@@ -27,7 +27,8 @@ presentation <-  theme_bw() +
                                     size = 6),
         strip.text = element_text(family = "Arial",
                                   face = "bold",
-                                  size = 6))
+                                  size = 6),
+        strip.text.x = element_text(vjust = 0))
 ```
 
 #Figure 1:
@@ -115,9 +116,9 @@ p1 = ggplot(nnfitCor %>% filter(protein == prot)) +
         legend.position = "none",
         legend.text = element_text(angle = 45)) +
   geom_text(data = labelDf %>% filter(cc != 0, cc != 11), aes(pi,cc,label =cc), inherit.aes = F, vjust = 1.5) +
-  geom_text(data = labelDf %>% filter(cc != 11), aes(0,cc,label =filling), inherit.aes = F, angle = 45, hjust= 1, color = "gray")
+  geom_text(data = labelDf %>% filter(cc != 11), aes(0,cc,label =filling), inherit.aes = F, angle = 45, hjust= 0.9, vjust = 1, color = "gray")
 
-ggsave("~/Flanks/Images/f1pD.png", plot = p1, height = 12, width = 12, units = "cm")
+ggsave("~/Flanks/Images/f1pD.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
 ```
 
 # Figure 2:
@@ -125,122 +126,126 @@ ggsave("~/Flanks/Images/f1pD.png", plot = p1, height = 12, width = 12, units = "
 
 ```{r}
 ### Parameters ###
-iVal = unique(c(seq(100,1000,100),seq(1E3,1E4,1E3),seq(1E4,1E5,1E4),seq(1E5,1E6,1E5),seq(1E6,1E7,1E6)))
-jVal = 1:10
-
-testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
-  unlist() %>%
-  prod()
-
-typeCor = "spearman"
-###
-
-# read-in data
-readDat2 =
-  fread("~/Flank_seq/data/Stormo_All_Expts.txt", header = T) %>%
-  tbl_df() %>%
-  rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
-  mutate(index = c(rep(1,256), rep(2,256), rep(3,1024), rep(4,1024))) %>% #R2,R4,R3.1,R3.2 (only from Expt 1)
-  filter(index == 4) %>%
-  mutate(True_Bound_P = True_Bound / sum(True_Bound),
-         True_Unbound_P = True_Unbound / sum(True_Unbound),
-         spec_ddG = True_Bound_P / True_Unbound_P, target = Seq) %>%
-    separate(target, paste0("Var",1:10),1:9) %>%
-  select(Seq,spec_ddG,Var5,Var7:Var10)
-
-# extract PWM coefficients from real data
-refCoef =
-  lm(spec_ddG ~ Var5+Var7+Var8+Var9+Var10, data = readDat2) %>%
-  coef() %>%
-  as.vector()
-
-# perform sampling
-dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equally between bound and unbound
-  libDepth = i
-  dnaSpecies = 1024
-  foreach(j = jVal, .combine = "rbind")%do%{ # iterations
-
-    trueRatioDf =
-      data.frame(specIndex = readDat2$Seq, trueRatio = readDat2$spec_ddG) %>%
-      tbl_df()
-
-    obsRatioDf =
-      inner_join(tbl_df(data.frame(sampleBound = sample(trueRatioDf$specIndex, libDepth/2, prob = trueRatioDf$trueRatio, replace = T))) %>%
-        count(sampleBound) %>%
-        rename(specIndex = sampleBound, bound = n),
-        tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1,dnaSpecies), replace = T))) %>%
-        count(sampleUnbound) %>%
-        rename(specIndex = sampleUnbound, unbound = n)) %>%
-      mutate(obsRatio = bound/unbound)
-
-    ratioDf =
-      inner_join(trueRatioDf, obsRatioDf %>% select(-bound, -unbound)) %>%
-      mutate(target = specIndex) %>%
-      separate(target, paste0("Var",1:10),1:9) %>%
-      select(-Var1,-Var2,-Var3,-Var4,-Var6)
-
-    iterCoef = tryCatch({lm(obsRatio ~ Var5+Var7+Var8+Var9+Var10, data = ratioDf) %>%
-        coef() %>%
-        as.vector()}, error = function(err) {NA})
-
-    rSeq = tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$p.value < (0.05/testCount),cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$estimate,NA)}, error = function(err) {NA})
-    rPwm = tryCatch({ifelse(cor.test(refCoef, iterCoef, method = typeCor)$p.value < (0.05/testCount),cor.test(refCoef, iterCoef, method = typeCor)$estimate,NA)}, error = function(err) {NA})
-
-    data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2seq = ifelse(is.na(rSeq),0,rSeq), r2pwm = ifelse(is.na(rPwm),0,rPwm), libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>%
-      mutate(r2seq = ifelse(typeCor == "pearson", r2seq^2, r2seq), r2pwm = ifelse(typeCor == "pearson", r2pwm^2, r2pwm))
-  }
-} %>% gather(key,value,c(r2seq,r2pwm))
-
-write.table(dsPWM, "~/Flank_seq/data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
+# iVal = unique(c(seq(100,1000,100),seq(1E3,1E4,1E3),seq(1E4,1E5,1E4),seq(1E5,1E6,1E5),seq(1E6,1E7,1E6)))
+# jVal = 1:10
+# 
+# testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
+#   unlist() %>%
+#   prod()
+# 
+# typeCor = "pearson"
+# ###
+# 
+# # read-in data
+# readDat2 =
+#   fread("~/Flank_seq/data/Stormo_All_Expts.txt", header = T) %>%
+#   tbl_df() %>%
+#   rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
+#   mutate(index = c(rep(1,256), rep(2,256), rep(3,1024), rep(4,1024))) %>% #R2,R4,R3.1,R3.2 (only from Expt 1)
+#   filter(index == 4) %>%
+#   mutate(True_Bound_P = True_Bound / sum(True_Bound),
+#          True_Unbound_P = True_Unbound / sum(True_Unbound),
+#          spec_ddG = True_Bound_P / True_Unbound_P, target = Seq) %>%
+#     separate(target, paste0("Var",1:10),1:9) %>%
+#   select(Seq,spec_ddG,Var5,Var7:Var10)
+# 
+# # extract PWM coefficients from real data
+# refCoef =
+#   lm(spec_ddG ~ Var5+Var7+Var8+Var9+Var10, data = readDat2) %>%
+#   coef() %>%
+#   as.vector()
+# 
+# # perform sampling
+# dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equally between bound and unbound
+#   libDepth = i
+#   dnaSpecies = 1024
+#   foreach(j = jVal, .combine = "rbind")%do%{ # iterations
+# 
+#     trueRatioDf =
+#       data.frame(specIndex = readDat2$Seq, trueRatio = readDat2$spec_ddG) %>%
+#       tbl_df()
+# 
+#     obsRatioDf =
+#       inner_join(tbl_df(data.frame(sampleBound = sample(trueRatioDf$specIndex, libDepth/2, prob = trueRatioDf$trueRatio, replace = T))) %>%
+#         count(sampleBound) %>%
+#         rename(specIndex = sampleBound, bound = n),
+#         tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1,dnaSpecies), replace = T))) %>%
+#         count(sampleUnbound) %>%
+#         rename(specIndex = sampleUnbound, unbound = n)) %>%
+#       mutate(obsRatio = bound/unbound)
+# 
+#     ratioDf =
+#       inner_join(trueRatioDf, obsRatioDf %>% select(-bound, -unbound)) %>%
+#       mutate(target = specIndex) %>%
+#       separate(target, paste0("Var",1:10),1:9) %>%
+#       select(-Var1,-Var2,-Var3,-Var4,-Var6)
+# 
+#     iterCoef = tryCatch({lm(obsRatio ~ Var5+Var7+Var8+Var9+Var10, data = ratioDf) %>%
+#         coef() %>%
+#         as.vector()}, error = function(err) {NA})
+# 
+#     rSeq = tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$p.value < (0.05/testCount),cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$estimate,NA)}, error = function(err) {NA})
+#     rPwm = tryCatch({ifelse(cor.test(refCoef, iterCoef, method = typeCor)$p.value < (0.05/testCount),cor.test(refCoef, iterCoef, method = typeCor)$estimate,NA)}, error = function(err) {NA})
+# 
+#     data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2seq = ifelse(is.na(rSeq),0,rSeq), r2pwm = ifelse(is.na(rPwm),0,rPwm), libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>%
+#       mutate(r2seq = ifelse(typeCor == "pearson", r2seq^2, r2seq),
+#              r2seq = r2seq * seqObsPct,
+#              r2pwm = ifelse(typeCor == "pearson", r2pwm^2, r2pwm))
+#   }
+# } %>% gather(key,value,c(r2seq,r2pwm))
+# 
+# write.table(dsPWM, "~/Flank_seq/data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
 ###
 
 dsPWM = fread("~/Flank_seq/data/dspwmSimulation.txt", header = T)
 
 #plot
+my_svg <- function(file, width, height) {
+  library(RSvgDevice)
+  devSVG(file = file, width = width, height = height, bg = "white", fg = "black",
+         onefile = TRUE, xmlHeader = TRUE)
+}
+dev='my_svg'
+
 colPal = brewer.pal(9,"Set1")
-p1 = ggplot(dsPWM) +
+p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
   presentation +
   ylim(c(0,1)) +
-  geom_boxplot(aes(readTotal,value,group = interaction(readTotal,key),color=key), outlier.alpha = 0, position = "dodge", width = 0.05) +
-  geom_line(aes(readTotal,value,color = key), stat="summary",fun.y = "median", size = 0.5) +
-  scale_x_log10() +
-  scale_color_manual(label = c("Additive model","Individual ddG"),"", values = colPal[1:2]) +
+  geom_point(aes(readTotal,value,group = interaction(readTotal,key),color=key), 
+             stat = "summary", 
+             fun.y = "median",
+             size = 0.25) +
+  geom_line(aes(readTotal,value,color = key), 
+            stat="summary",
+            fun.y = "median", 
+            size = 0.25) +
+  scale_x_log10(breaks = 10^(2:6), labels = expression(bold("10"^"2"),bold("10"^"3"),bold("10"^"4"),bold("10"^"5"),bold("10"^"6"))) +
+  scale_color_manual("", 
+                     values = colPal[1:2],
+                     labels = expression(bold("mononucleotide\nadditive model"),bold(paste("individual ",Delta,Delta,"G"))),
+                     guide = guide_legend(label.vjust = 0.5,
+                                          label.hjust = 0)) +
   theme(aspect.ratio = 1/2) +
-  ylab("Accuracy\n(Spearman's rho)") +
+  ylab(("Median\nnormalized accuracy")) +
   xlab("Sequencing depth, read counts")
 
-ggsave("~/Flanks/Images/f2pA.eps", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pA.svg", plot = p1, height = 3, width = 8.7, units = "cm")
 ```
 
 ## Panel B: Simulate assay output as function of defined parameters.
-
-Assumptions: 
-1) uniform sampling of reads
-2) uniform sequence distribution
-3) symmetric energy range
-4) energies normally distributed around dG = 0 with stdev = energy range/6 (~99% of range)
-
-Arg:
-dnaSpecies = number of possible DNA sequences
-readNum = depth of sequencing (sum of bound and unbound sublibs)
-gibbsDiff = the free energy difference between strongest and weakest binders
-
-Output:
-dataframe of paramters and accuracy of observed ratios as measured by r^2 compared to true values
-
 
 ```{r, eval=FALSE}
 ### Parameters ###
 # mVal = c(0.25,0.5,1:5)
 # nVal = 10^(2:6)
-# iVal = 10^(3:8)  
+# iVal = 10^(3:8)
 # jVal = 1:10
 # 
 # testCount = lapply(list(mVal,nVal,iVal,jVal),function (x) x %>% length()) %>%
 #   unlist() %>%
 #   prod()
 # 
-# typeCor = "spearman"
+# typeCor = "pearson"
 # ###
 # 
 # returnDf =
@@ -253,7 +258,7 @@ dataframe of paramters and accuracy of observed ratios as measured by r^2 compar
 #         libDepth = i
 #         print(paste(m,n,i))
 #         foreach(j = jVal, .combine = "rbind")%dopar%{ # 10 iterations
-#           trueRatioDf = 
+#           trueRatioDf =
 #             tbl_df(data.frame(specIndex = 1:dnaSpecies, trueRatio = dnaRatios)) %>%
 #             mutate(prob = trueRatio/sum(trueRatio))
 #           obsRatioDf =
@@ -262,15 +267,16 @@ dataframe of paramters and accuracy of observed ratios as measured by r^2 compar
 #               rename(specIndex = sampleBound, bound = n),
 #               tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1/dnaSpecies,dnaSpecies), replace = T))) %>%
 #               count(sampleUnbound) %>%
-#               rename(specIndex = sampleUnbound, unbound = n)) %>% 
+#               rename(specIndex = sampleUnbound, unbound = n)) %>%
 #             mutate(obsRatio = bound/unbound)
-#           ratioDf = 
+#           ratioDf =
 #             inner_join(trueRatioDf %>% select(-prob), obsRatioDf %>% select(-bound, -unbound))
-#           rSqd = 
+#           rSqd =
 #             tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$p.value < (0.05/testCount), cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$estimate, NA)}, error = function(err) {NA})
-#           
-#           data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2 = ifelse(is.na(rSqd),0,rSqd), ddG = gibbsDiff, libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>% 
-#             mutate(r2 = ifelse(typeCor == "pearson", r2^2, r2), infoCov = r2 * seqObsPct)
+# 
+#           data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2 = ifelse(is.na(rSqd),0,rSqd), ddG = gibbsDiff, libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>%
+#             mutate(r2 = ifelse(typeCor == "pearson", r2^2, r2),
+#                    r2 = r2 * seqObsPct)
 #         }
 #       }
 #     }
@@ -280,33 +286,44 @@ dataframe of paramters and accuracy of observed ratios as measured by r^2 compar
 ###
 
 returnDf2 =
-  fread("~/Flank_seq/data/modelSimulation.txt", header = T) %>% 
+  fread("~/Flank_seq/data/modelSimulation.txt", header = T) %>%
+  mutate(r2 = r2/seqObsPct) %>% 
   gather(key,value,r2,seqObsPct) %>% 
   tbl_df() %>%
-  mutate(key = ifelse(key == "r2", "Spearman's rho", "Fract. Obs."),
-         key = factor(key, levels = c("Spearman's rho", "Fract. Obs.")))
-
-#plot
+  mutate(key = ifelse(key == "r2", 1, 2),
+         key = factor(key, labels = c(TeX("$\\textbf{Pearson's}$ $\\mathbf{r^2}$"), TeX("$\\textbf{fract. obs.}$"))),
+         readTotal = log10(readTotal),
+         libSize = log10(libSize),
+         libSize = factor(libSize, labels = c(
+           expression(bold(paste("lib. = 10"^"2"))),
+           expression(bold(paste("lib. = 10"^"3"))),
+           expression(bold(paste("lib. = 10"^"4"))),
+           expression(bold(paste("lib. = 10"^"5"))),
+           expression(bold(paste("lib. = 10"^"6")))
+         )))
 
 colPal = colorRampPalette(brewer.pal(9,"YlOrRd"))(10)
 p1 = ggplot(returnDf2 ) +
   presentation +
-  geom_line(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.5) +
-  geom_point(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.5) +
-  theme(aspect.ratio = 1, axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-  facet_grid(libSize ~ key, scales = "free") +
+  geom_line(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.25) +
+  geom_point(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.25) +
+  theme(aspect.ratio = 1, 
+        axis.text.x = element_text(vjust = 0.5)) +
+  facet_grid(libSize ~ key, scales = "free", labeller = "label_parsed") +
   ylim(c(0,1)) +
-  xlab("ddG, kcal/mol") +
-  ylab("") +
-  scale_color_manual("Sequencing depth", values = colPal[(length(colPal)-6):length(colPal)])
+  xlab(expression(bold(paste(Delta,Delta,"G, kcal/mol")))) +
+  ylab("Median") +
+  scale_color_manual("Sequencing depth", 
+                     values = colPal[(length(colPal)-6):length(colPal)], 
+                     labels = expression(bold("10"^"3"),bold("10"^"4"),bold("10"^"5"),bold("10"^"6"),bold("10"^"7"),bold("10"^"8")))
 
-ggsave("~/Flanks/Images/f2pB.eps", plot = p1, height = 10.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm")
 ```
 
 ## Panel C: Flank library depth simultion
 ```{r}
 # FYI spec-seq = 5.4kt (3.2 kcal/mol) affinity range
-# readDat = 
+# readDat =
 #   fread("~/Flank_seq/data/Stormo_All_Expts.txt", header = T) %>%
 #   tbl_df() %>%
 #   rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
@@ -317,9 +334,9 @@ ggsave("~/Flanks/Images/f2pB.eps", plot = p1, height = 10.5, width = 8.7, units 
 #          spec_ddG = True_Bound_P / True_Unbound_P) %>%
 #   ungroup() %>%
 #   mutate(Seq = 1:nrow(.)) %>%
-#   select(Seq,spec_ddG) %>% 
+#   select(Seq,spec_ddG) %>%
 #   right_join(.,data.frame(Seq = 1:(4^10)) %>%
-#   mutate(ref_ddG = sapply(rnorm(4^10, mean = 0, sd = 1/6), function(x) exp(-x/.593)))) 
+#   mutate(ref_ddG = sapply(rnorm(4^10, mean = 0, sd = 1/6), function(x) exp(-x/.593))))
 # 
 # ### Parameters ###
 # iVal = unique(c(seq(1E1,1E2,1E1),seq(1E2,1E3,1E2),seq(1E3,1E4,1E3),seq(1E4,1E5,1E4),seq(1E5,1E6,1E5),seq(1E6,1E7,1E6),seq(1E7,1E8,1E7),seq(1E8,1E9,1E8)))
@@ -335,32 +352,34 @@ ggsave("~/Flanks/Images/f2pB.eps", plot = p1, height = 10.5, width = 8.7, units 
 #         print(i)
 #         foreach(k = kVal, .combine = "rbind")%do%{ # spec-seq or theoretical normal
 #           foreach(j = jVal, .combine = "rbind")%dopar%{ # iterations
-#             
+# 
 #             libDepth = i
-#             
+# 
 #             dnaSpecies = length(readDat[,k] %>% unlist(use.names=F) %>% na.omit())
-#             
-#             trueRatioDf = 
+# 
+#             trueRatioDf =
 #               tbl_df(data.frame(specIndex = 1:dnaSpecies, trueRatio = readDat[,k] %>% unlist(use.names=F) %>% na.omit()))
-#             
+# 
 #             obsRatioDf =
 #               inner_join(tbl_df(data.frame(sampleBound = sample(trueRatioDf$specIndex, libDepth/2, prob = trueRatioDf$trueRatio, replace = T))) %>%
 #                 count(sampleBound) %>%
 #                 rename(specIndex = sampleBound, bound = n),
 #                 tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1,dnaSpecies), replace = T))) %>%
 #                 count(sampleUnbound) %>%
-#                 rename(specIndex = sampleUnbound, unbound = n)) %>% 
+#                 rename(specIndex = sampleUnbound, unbound = n)) %>%
 #               mutate(obsRatio = bound/unbound)
-#             
-#             ratioDf = 
+# 
+#             ratioDf =
 #               inner_join(trueRatioDf, obsRatioDf %>% select(-bound, -unbound))
-#             
+# 
 #             rSqd = tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$p.value < (0.05/testCount),cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$estimate,NA)}, error = function(err) {NA})
-#             
+# 
 #             error = tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = "pearson" )$p.value < (0.05/testCount),cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = "pearson")$estimate^2,NA)}, error = function(err) {NA})
-#             
-#             data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2 = ifelse(is.na(rSqd),0,rSqd), err = ifelse(is.na(error),1,1-error),libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>% 
-#               mutate(type = k, r2 = ifelse(typeCor == "pearson", r2^2, r2))
+# 
+#             data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2 = ifelse(is.na(rSqd),0,rSqd), err = ifelse(is.na(error),1,1-error),libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>%
+#               mutate(type = k, 
+#                      r2 = ifelse(typeCor == "pearson", r2^2, r2),
+#                      r2 = r2 * seqObsPct)
 #           }
 #         }
 # } %>% tbl_df()
@@ -370,30 +389,37 @@ ggsave("~/Flanks/Images/f2pB.eps", plot = p1, height = 10.5, width = 8.7, units 
 
 dsDat = fread("~/Flank_seq/data/downsampleSimulation.txt", header = T) %>% 
   filter(type == "ref_ddG") %>% 
-  gather(key,value,r2,seqObsPct,err) %>%
-  group_by(meanRead_perSeq,key) %>%
-  summarise(medVal = median(value, na.rm = T))
+  mutate(r2 = r2/seqObsPct) %>% 
+  gather(key,value,seqObsPct,r2) %>% 
+  mutate(key = factor(key, levels = c("seqObsPct","r2")))
 
 #plot
 colPal = brewer.pal(9,"Set1")
 p1 = ggplot(dsDat) +
   presentation +
-  geom_line(aes(meanRead_perSeq, medVal, color = key), size = 0.5) +
-  geom_point(aes(meanRead_perSeq, medVal, color = key), size = 0.5) +
-  theme(aspect.ratio = 1/2, 
-        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  geom_rect(aes(xmin=5, xmax=50, ymin=-0.05, ymax=1.05), fill="cyan", alpha=0.1) +
+  geom_line(aes(meanRead_perSeq, value, color = key), stat = "summary", fun.y = "median", size = 0.25) +
+  geom_point(aes(meanRead_perSeq, value, color = key), stat = "summary", fun.y = "median", size = 0.25) +
+  geom_vline(xintercept = 100, lty = 2, size = 0.25) +
+  theme(aspect.ratio = 1/2,
+        legend.text.align = 0) +
   xlab("Mean reads per sequence") +
   ylab("Median") +
-  scale_x_log10(limits = c(0.1,1000)) +
-  scale_color_manual(labels = c("Fract. Error","Spearman's rho","Fract. Observed"),"", values = colPal[1:3])
+  scale_x_log10(limits = c(0.1,1000),
+                breaks = c(0.1,1,10,100,1000),
+                labels = expression(bold("10"^"-1"),bold("10"^"0"),bold("10"^"1"),bold("10"^"2"),bold("10"^"3"))) +
+  scale_color_manual(labels = c(expression("fract. obs.",
+                                           bold(paste("Pearson's ","r"^"2")))),
+                     "", 
+                     values = colPal[1:2])
 
-ggsave("~/Flanks/Images/f2pC.eps", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm")
 
-# predictions
-dsDat %>%
+dsDat %>% 
   tbl_df() %>% 
-  filter(key == "seqObsPct", medVal > 0.95) %>% 
-  arrange(meanRead_perSeq)
+  filter(key == "r2", readTotal <= 10000000) %>% 
+  na.omit() %>% 
+  arrange(desc(value))
 ```
 
 # Figure 3:
@@ -405,6 +431,8 @@ outAdd = addMotif(counts.df, "ddG") %>%
   group_by(monuc.value,monuc.pos,protein,side) %>% 
   summarise(totalmean = mean(monuc.meanval), sem = sd(monuc.meanval)/sqrt(n())) %>% # SEM across replicates
   ungroup()
+
+#write.table(outAdd, "~/Desktop/additive.txt", col.names = T, row.names = F, quote = F, sep = "\t")
   
 relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
   iSlice = outAdd %>% filter(protein == i)
@@ -418,9 +446,8 @@ relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
          protein = factor(protein, levels = c("Pho4","Cbf1"))) %>%
   left_join(., data.frame(monuc.value = c("A","C","G","T"), colPal = c("#55C341","#3036DF","#F0E328","#EF1717"))) %>% 
   mutate(colPal = as.character(colPal))
-  
-# composite textmap
 
+# composite textmap
 p1 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
   geom_errorbar(aes(x = monuc.pos, ymin = affinityFrac - affinitySEM, ymax = affinityFrac + affinitySEM),size = 0.2,width=0.2) +
@@ -428,13 +455,15 @@ p1 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   theme(aspect.ratio = 1, 
         legend.position = "none",
         panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()) +
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 45,
+                                   hjust = 1)) +
   ylab("Relative affinity") +
   xlab("Flank position") +
   facet_grid(.~protein, scales = "free") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("~/Flanks/Images/f3pA.eps", plot = p1, height = 4.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pA.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
 ```
 
 ## Panel B: PWM from literature of Pho4 and Cbf1
@@ -456,7 +485,9 @@ p1 = ggplot() +
   theme(legend.position = "none",
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        aspect.ratio = 1/2) +
+        aspect.ratio = 1/2,
+        axis.text.x = element_text(angle = 45,
+                                   hjust = 1)) +
   scale_x_continuous(breaks=1:8, labels=c("-1",rep("",6),"1"))
 
 p2 = ggplot() +
@@ -465,12 +496,14 @@ p2 = ggplot() +
   theme(legend.position = "none",
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        aspect.ratio = 1/2) +
+        aspect.ratio = 1/2,
+        axis.text.x = element_text(angle = 45,
+                                   hjust = 1)) +
   scale_x_continuous(breaks=1:8, labels=c("-2","-1",rep("",6)))
 
 pp = cowplot::plot_grid(p1,p2,nrow=1)
 
-ggsave("~/Flanks/Images/f3pB.eps", plot = pp, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pB.svg", plot = pp, height = 3, width = 8.7, units = "cm")
 
 ```
 
@@ -487,7 +520,7 @@ pho4Curves =
     unite("flank",V3,V5,sep="_") %>%
     select(index = V1, flank) %>%
     mutate(index = paste("ID",index,sep=""))) %>%
-  mutate(flank = ifelse(index == "ID32","neg ctrl",flank)) %>%
+  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
   mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()),
          estimate = percent_rank(estimate))
 
@@ -496,17 +529,17 @@ estSpread = pho4Curves %>% arrange(estimate) %>% .$estimate %>% unique()
 #plot
 colPal = brewer.pal(9,"Set1")
 p1 = ggplot(pho4Curves %>% filter(estimate == estSpread[32]|estimate == estSpread[31]|estimate == estSpread[20]|estimate == estSpread[10]|estimate == estSpread[1])) +
-  geom_point(aes(Conc,fBound,color=flank), size = 0.5) +
-  geom_line(aes(Conc,.fitted,color=flank)) +
+  geom_point(aes(Conc,fBound,color=flank), size = 0.25) +
+  geom_line(aes(Conc,.fitted,color=flank), size = 0.25) +
   presentation +
   theme(aspect.ratio = 1, 
-        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
   ylab("Ratio DNA/protein") +
   xlab("Substrate concentration, nM") +
   xlim(c(0,100)) +
   scale_color_manual("", values = colPal)
 
-ggsave("~/Flanks/Images/f3pC.eps", plot = p1, height = 4.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pC.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
 ```
 
 ## Panel D: Composite additive of Pho4 + Cbf1 correlated to titration data (scaled and offset)
@@ -558,7 +591,8 @@ crossallDat2 =
   crossallDat %>%
   left_join(.,slopeDf) %>%
   filter(key == "Mononucleotide model") %>%
-  mutate(value = (value*slope) + int, 
+  mutate(key = "mononucleotide model",
+         value = (value*slope) + int, 
          protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # plot
@@ -568,45 +602,45 @@ p1 = ggplot(crossallDat2, aes(stdE,value)) +
   geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err),size = 0.25) +
   geom_point(size = 0.25) +
   facet_grid(key ~ protein, scale = "free") +
-  theme(aspect.ratio = 1) +
-  ylab("Sequencing dG, kcal/mol") +
-  xlab("Titration dG, kcal/mol") 
+  theme(aspect.ratio = 1,
+        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) 
 
-ggsave("~/Flanks/Images/f3pD.eps", plot = p1, height = 4.5, width = 8.7, units = "cm")
-write.table(crossallDat2,"~/Desktop/compositeSeq.txt", col.names = T, row.names = F, quote = F, sep = "\t")
+ggsave("~/Flanks/Images/f3pD.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
 
+# Analysis
 # output all data scaled and offset
 allScaled = foreach(i = 1:2, .combine = "rbind")%do%{
   protSet = c("pho4","cbf1")
   tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, flank, X01:X10,ddG)
   mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
   predMod = predict(mod, tmp %>% select(X01:X10) %>% distinct())
-  tmp %>% 
-    select(X01:X10) %>% 
+  tmp %>%
+    select(X01:X10) %>%
     distinct() %>%
     mutate(.fitted = predMod, protein = i)
 }
 
 # return Kd range
-allScaled %>% 
+allScaled %>%
   tbl_df() %>%
-  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>% 
-  left_join(.,slopeDf) %>% 
+  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
+  left_join(.,slopeDf) %>%
   mutate(.scaled = (.fitted*slope) + int,
-         Kd = exp(.scaled/0.593)*1E9) %>% 
-  group_by(protein) %>% 
+         Kd = exp(.scaled/0.593)*1E9) %>%
+  group_by(protein) %>%
   summarise(minval = min(Kd), maxval = max(Kd), medval = median(Kd))
 
 # return dG range
-allScaled %>% 
+allScaled %>%
   tbl_df() %>%
-  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>% 
-  left_join(.,slopeDf) %>% 
+  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
+  left_join(.,slopeDf) %>%
   mutate(.scaled = (.fitted*slope) + int,
-         Kd = exp(.scaled/0.593)*1E9) %>% 
-  group_by(protein) %>% 
+         Kd = exp(.scaled/0.593)*1E9) %>%
+  group_by(protein) %>%
   summarise(minval = min(.scaled), maxval = max(.scaled), medval = median(.scaled))
-
 ```
 
 # Figure 4:
@@ -732,7 +766,7 @@ lassoPlot2 =
 
 p1 = ggplot(lassoPlot2) +
   presentation +
-  geom_line(aes(lambda,estimate,group=interaction(variable,base), color = colVal), size = 0.5) +
+  geom_line(aes(lambda,estimate,group=interaction(variable,base), color = colVal), size = 0.25) +
   theme(aspect.ratio = 1, 
         legend.position = "none") +
   ylab("Variable coefficient") +
@@ -747,7 +781,7 @@ p1 = ggplot(lassoPlot2) +
   scale_color_gradient2(high = "red", mid = "gray", low = "blue") +
   facet_wrap(~ protein+feature, nrow = 1)
 
-ggsave("~/Flanks/Images/f4pB.eps", plot = p1, height = 8, width = 17.8, units = "cm")
+ggsave("~/Flanks/Images/f4pB.svg", plot = p1, height = 8, width = 17.8, units = "cm")
 ```
 
 # Figure 5:
@@ -784,12 +818,14 @@ nnfitCor =
 overlayDf = 
   left_join(nnfitCor %>% select(flank,ddG,t,cc,protein),chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
-         protein = factor(protein, levels = c("Pho4","Cbf1")))
+         protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
+  group_by(protein) %>% 
+  mutate(relOcc = occ/max(occ, na.rm = T)) %>% 
+  ungroup()
 
-# circle plot
+# circle plot (no ChIP)
 p1 = ggplot(overlayDf) +
   geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  geom_point(aes(t,cc,size=occ,color=ddG)) +
   coord_polar() +
   scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
   scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
@@ -801,21 +837,43 @@ p1 = ggplot(overlayDf) +
         legend.position = "none") +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("~/Flanks/Images/f5pC.png", plot = p1, height = 12, width = 12, units = "cm")
+ggsave("~/Flanks/Images/f5pC1.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
 
-# circle plot
+# circle plot (only ChIP)
+p1 = ggplot(overlayDf) +
+  theme_bw() +
+  geom_point(aes(t,cc,size=relOcc,color=ddG)) +
+  coord_polar() +
+  scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
+  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
+  theme(aspect.ratio = 1, 
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "none",
+        panel.border = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(size = 0.1, color = "gray40")) +
+  scale_y_continuous(breaks = 0:10) +
+  facet_wrap(~ protein, nrow = 1)
+
+ggsave("~/Flanks/Images/f5pC2.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
+
+# legend print
 pLeg = ggplot(overlayDf) +
   geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  geom_point(aes(t,cc,size=occ,color=ddG)) +
+  geom_point(aes(t,cc,size=relOcc,color=ddG)) +
   coord_polar() +
-  scale_size_continuous("ChIP\nenrichment", range = c(0.01, 2.5)) +
-  scale_color_gradient2("ddG\nkcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
-  theme(aspect.ratio = 1, 
+  scale_size_continuous(expression(bold("Relative ChIP\nenrichment")), range = c(0.01, 2.5)) +
+  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))),low = "#0057E7", high = "#D62D20", mid = "white") +
+  theme(aspect.ratio = 1,
         axis.title = element_blank(),
         axis.text = element_blank(),
         axis.line = element_blank(),
         axis.ticks = element_blank()) +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("~/Flanks/Images/f5pC_leg.png", plot = pLeg, height = 12, width = 12, units = "cm")
+ggsave("~/Flanks/Images/f5pCleg.png", plot = pLeg, height = 12, width = 12, units = "cm", dpi = 600)
 ```
