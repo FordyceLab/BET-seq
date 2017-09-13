@@ -38,69 +38,46 @@ presentation <-  theme_bw() +
 ## Panel B: Landscape
 ```{r}
 
-# foreach(prot = c("pho4","cbf1"))%dopar%{
-#   bestFlank = 
-#     countsNN.df %>% 
-#     filter(protein == prot) %>% 
-#     arrange(ddG) %>%
-#     slice(1) %>%
-#     .$flank
-#   
-#   shockDf = 
-#     countsNN.df %>% 
-#     filter(protein == prot) %>% 
-#     select(flank,ddG) %>%
-#     mutate(cc = hdset2(flank,bestFlank)) %>% 
-#     group_by(cc) %>% 
-#     arrange(flank) %>%
-#     mutate(t = seq(0,360-(360/n()),length.out = n()) * pi / 180) %>%
-#     ungroup()
-#   
-#   write.table(shockDf, paste0("~/Flank_seq/data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
-# }
+foreach(prot = c("pho4","cbf1"))%dopar%{
+  bestFlank =
+    countsNN_scaled %>%
+    filter(protein == prot) %>%
+    select(flank, ddG = scaled_ddG) %>% 
+    arrange(ddG) %>%
+    slice(1) %>%
+    .$flank
 
-shockDf = 
-  bind_rows(fread(paste0("~/Flank_seq/data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-            fread(paste0("~/Flank_seq/data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
-  tbl_df()
+  shockDf =
+    countsNN_scaled %>%
+    filter(protein == prot) %>%
+    select(flank, ddG = scaled_ddG) %>% 
+    mutate(cc = hdset2(flank,bestFlank)) %>%
+    group_by(cc) %>%
+    arrange(flank) %>%
+    mutate(t = seq(0,360-(360/n()),length.out = n()) * pi / 180) %>%
+    ungroup()
 
-# join NN results with titration data
-nnCor = 
-  left_join(std_kd %>% select(flank,stdE,protein), shockDf %>% select(flank,ddG,cc,t))
-
-# lm to extract linear equation
-slopeDf = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
-  iSlice = nnCor %>% filter(protein == i)
-  mod = lm(stdE ~ ddG, iSlice)
-  tidy(mod) %>% 
-    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
-    select(term,estimate) %>%
-    spread(term,estimate) %>%
-    mutate(protein = i)
+  write.table(shockDf, paste0("~/Flank_seq/data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 }
 
-nnfitCor = 
-  left_join(shockDf,slopeDf) %>%
-  mutate(ddG = (ddG*slope), t = t/2) %>% #only scale, no offset, create hemisphere
-  select(-int,-slope) %>%
-  group_by(cc) %>% 
-  mutate(meanval = mean(ddG)) %>%
-  ungroup() %>%
-  bind_rows(data.frame(flank = NA, ddG = NA, cc = 11, t = 2*pi, protein = "pho4", int = NA, slope = NA))
+###
+prot = "pho4"
+###
+
+shockDf = 
+  fread(paste0("~/Flank_seq/data/shock_pho4.txt"), header = T) %>% 
+  mutate(protein = prot) %>% 
+  tbl_df()
+
   
 labelDf = 
-  nnfitCor %>%
-  filter(protein == "pho4") %>%
+  shockDf %>%
   group_by(cc,protein) %>%
   summarise(count = n()) %>%
   ungroup() %>%
   mutate(rolling = cumsum(count), 
          digits = nchar(as.character(count)), 
          filling = paste0(count, "   "))
-
-###
-prot = "pho4"
-###
 
 # circle plot
 p1 = ggplot(nnfitCor %>% filter(protein == prot)) +
@@ -125,97 +102,104 @@ ggsave("~/Flanks/Images/f1pD.png", plot = p1, height = 12, width = 12, units = "
 ## Panel A: Monte Carlo sampling of Spec-seq PWM and ddG
 
 ```{r}
-### Parameters ###
-# iVal = unique(c(seq(100,1000,100),seq(1E3,1E4,1E3),seq(1E4,1E5,1E4),seq(1E5,1E6,1E5),seq(1E6,1E7,1E6)))
-# jVal = 1:10
-# 
-# testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
-#   unlist() %>%
-#   prod()
-# 
-# typeCor = "pearson"
-# ###
-# 
-# # read-in data
-# readDat2 =
-#   fread("~/Flank_seq/data/Stormo_All_Expts.txt", header = T) %>%
-#   tbl_df() %>%
-#   rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
-#   mutate(index = c(rep(1,256), rep(2,256), rep(3,1024), rep(4,1024))) %>% #R2,R4,R3.1,R3.2 (only from Expt 1)
-#   filter(index == 4) %>%
-#   mutate(True_Bound_P = True_Bound / sum(True_Bound),
-#          True_Unbound_P = True_Unbound / sum(True_Unbound),
-#          spec_ddG = True_Bound_P / True_Unbound_P, target = Seq) %>%
-#     separate(target, paste0("Var",1:10),1:9) %>%
-#   select(Seq,spec_ddG,Var5,Var7:Var10)
-# 
-# # extract PWM coefficients from real data
-# refCoef =
-#   lm(spec_ddG ~ Var5+Var7+Var8+Var9+Var10, data = readDat2) %>%
-#   coef() %>%
-#   as.vector()
-# 
-# # perform sampling
-# dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equally between bound and unbound
-#   libDepth = i
-#   dnaSpecies = 1024
-#   foreach(j = jVal, .combine = "rbind")%do%{ # iterations
-# 
-#     trueRatioDf =
-#       data.frame(specIndex = readDat2$Seq, trueRatio = readDat2$spec_ddG) %>%
-#       tbl_df()
-# 
-#     obsRatioDf =
-#       inner_join(tbl_df(data.frame(sampleBound = sample(trueRatioDf$specIndex, libDepth/2, prob = trueRatioDf$trueRatio, replace = T))) %>%
-#         count(sampleBound) %>%
-#         rename(specIndex = sampleBound, bound = n),
-#         tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1,dnaSpecies), replace = T))) %>%
-#         count(sampleUnbound) %>%
-#         rename(specIndex = sampleUnbound, unbound = n)) %>%
-#       mutate(obsRatio = bound/unbound)
-# 
-#     ratioDf =
-#       inner_join(trueRatioDf, obsRatioDf %>% select(-bound, -unbound)) %>%
-#       mutate(target = specIndex) %>%
-#       separate(target, paste0("Var",1:10),1:9) %>%
-#       select(-Var1,-Var2,-Var3,-Var4,-Var6)
-# 
-#     iterCoef = tryCatch({lm(obsRatio ~ Var5+Var7+Var8+Var9+Var10, data = ratioDf) %>%
-#         coef() %>%
-#         as.vector()}, error = function(err) {NA})
-# 
-#     rSeq = tryCatch({ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$p.value < (0.05/testCount),cor.test(ratioDf$trueRatio, ratioDf$obsRatio, method = typeCor)$estimate,NA)}, error = function(err) {NA})
-#     rPwm = tryCatch({ifelse(cor.test(refCoef, iterCoef, method = typeCor)$p.value < (0.05/testCount),cor.test(refCoef, iterCoef, method = typeCor)$estimate,NA)}, error = function(err) {NA})
-# 
-#     data.frame(readTotal = libDepth, meanRead_perSeq = (libDepth/2)/dnaSpecies, iter = j, r2seq = ifelse(is.na(rSeq),0,rSeq), r2pwm = ifelse(is.na(rPwm),0,rPwm), libSize = dnaSpecies, seqObsPct = nrow(obsRatioDf)/dnaSpecies) %>%
-#       mutate(r2seq = ifelse(typeCor == "pearson", r2seq^2, r2seq),
-#              r2seq = r2seq * seqObsPct,
-#              r2pwm = ifelse(typeCor == "pearson", r2pwm^2, r2pwm))
-#   }
-# } %>% gather(key,value,c(r2seq,r2pwm))
-# 
-# write.table(dsPWM, "~/Flank_seq/data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
+## Parameters ###
+iVal = unique(c(seq(100,1000,100),seq(1E3,1E4,1E3),seq(1E4,1E5,1E4),seq(1E5,1E6,1E5),seq(1E6,1E7,1E6)))
+jVal = 1:10
+
+testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
+  unlist() %>%
+  prod()
 ###
 
-dsPWM = fread("~/Flank_seq/data/dspwmSimulation.txt", header = T)
+# read-in data
+readDat2 =
+  fread("~/Flank_seq/data/spec_R3_2.txt", header = F) %>% #R3.2 (only from Expt 1)
+  tbl_df() %>%
+  rename(Seq = V1, True_Bound = V2, True_Unbound = V3, True_Ratio = V4) %>%
+  mutate(True_Bound_P = True_Bound / sum(True_Bound),
+         True_Unbound_P = True_Unbound / sum(True_Unbound),
+         spec_ddG = True_Bound_P / True_Unbound_P, 
+         target = Seq) %>%
+    separate(target, paste0("Var",1:10),1:9) %>%
+  select(Seq,spec_ddG,Var5,Var7:Var10)
 
-#plot
-my_svg <- function(file, width, height) {
-  library(RSvgDevice)
-  devSVG(file = file, width = width, height = height, bg = "white", fg = "black",
-         onefile = TRUE, xmlHeader = TRUE)
-}
-dev='my_svg'
+predPWM = augment(lm(spec_ddG ~ Var5+Var7+Var8+Var9+Var10, data = readDat2)) %>% 
+  tbl_df()
+
+
+i = 10000; j = 1
+
+# perform sampling
+dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equally between bound and unbound
+  libDepth = i
+  dnaSpecies = 1024
+  foreach(j = jVal, .combine = "rbind")%do%{ # iterations
+
+    trueRatioDf =
+      data.frame(specIndex = readDat2$Seq, trueRatio = readDat2$spec_ddG) %>%
+      tbl_df()
+
+    obsRatioDf =
+      inner_join(tbl_df(data.frame(sampleBound = sample(trueRatioDf$specIndex, libDepth/2, prob = trueRatioDf$trueRatio, replace = T))) %>%
+        count(sampleBound) %>%
+        rename(specIndex = sampleBound, bound = n),
+        tbl_df(data.frame(sampleUnbound = sample(trueRatioDf$specIndex, libDepth/2, prob = rep(1,dnaSpecies), replace = T))) %>%
+        count(sampleUnbound) %>%
+        rename(specIndex = sampleUnbound, unbound = n)) %>%
+      mutate(obsRatio = bound/unbound)
+
+    ratioDf =
+      inner_join(trueRatioDf, obsRatioDf %>% select(-bound, -unbound)) %>%
+      mutate(target = specIndex) %>%
+      separate(target, paste0("Var",1:10),1:9) %>%
+      select(-Var1,-Var2,-Var3,-Var4,-Var6) %>% # determine relative difference
+      mutate(relDiff = diff(range(obsRatio))/diff(range(trueRatio)))
+
+    model = tryCatch({lm(obsRatio ~ Var5+Var7+Var8+Var9+Var10, data = ratioDf)},
+                     error = function(err) {NA})
+    
+    modelPred = tryCatch({predict(model, newdata = predPWM %>% select(Var5,Var7:Var10))},
+                         error = function(err) {NA})
+
+    rSeq = tryCatch({
+      ifelse(cor.test(ratioDf$trueRatio, ratioDf$obsRatio,method = "pearson")$p.value < (0.05/testCount),
+             cor.test(ratioDf$trueRatio, ratioDf$obsRatio,method = "pearson")$estimate^2,
+             NA)}, 
+      error = function(err) {NA})
+    
+    rPwm = tryCatch({
+      ifelse(cor.test(modelPred, predPWM$.fitted,method = "pearson")$p.value < (0.05/testCount) & length(modelPred) == 1024,
+             cor.test(modelPred, predPWM$.fitted,method = "pearson")$estimate^2,
+             NA)}, 
+      error = function(err) {NA})
+
+    data.frame(readTotal = libDepth, 
+               meanRead_perSeq = (libDepth/2)/dnaSpecies, 
+               iter = j, 
+               r2seq = ifelse(is.na(rSeq),0,rSeq), 
+               r2pwm = ifelse(is.na(rPwm),0,rPwm), 
+               libSize = dnaSpecies, 
+               seqObsPct = nrow(obsRatioDf)/dnaSpecies,
+               spread = mean(ratioDf$relDiff))
+  }
+} %>% gather(key,value,c(r2seq,r2pwm)) %>% 
+  mutate(acc= ifelse(key == "r2seq", value * seqObsPct, value))
+
+###
+
+#write.table(dsPWM, "~/Flank_seq/data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
+
+dsPWM = fread("~/Flank_seq/data/dspwmSimulation.txt", header = T)
 
 colPal = brewer.pal(9,"Set1")
 p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
   presentation +
   ylim(c(0,1)) +
-  geom_point(aes(readTotal,value,group = interaction(readTotal,key),color=key), 
+  geom_point(aes(readTotal,acc,group = interaction(readTotal,key),color=key), 
              stat = "summary", 
              fun.y = "median",
              size = 0.25) +
-  geom_line(aes(readTotal,value,color = key), 
+  geom_line(aes(readTotal,acc,color = key), 
             stat="summary",
             fun.y = "median", 
             size = 0.25) +
@@ -225,7 +209,8 @@ p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
                      labels = expression(bold("mononucleotide\nadditive model"),bold(paste("individual ",Delta,Delta,"G"))),
                      guide = guide_legend(label.vjust = 0.5,
                                           label.hjust = 0)) +
-  theme(aspect.ratio = 1/2) +
+  theme(aspect.ratio = 1/2,
+        legend.key.size = unit(0.3, "cm")) +
   ylab(("Median\nnormalized accuracy")) +
   xlab("Sequencing depth, read counts")
 
@@ -308,7 +293,8 @@ p1 = ggplot(returnDf2 ) +
   geom_line(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.25) +
   geom_point(aes(ddG, value, color = as.factor(readTotal), group = as.factor(readTotal)),stat = "summary",fun.y = "median", na.rm = T, size = 0.25) +
   theme(aspect.ratio = 1, 
-        axis.text.x = element_text(vjust = 0.5)) +
+        axis.text.x = element_text(vjust = 0.5),
+        legend.key.size = unit(0.3, "cm")) +
   facet_grid(libSize ~ key, scales = "free", labeller = "label_parsed") +
   ylim(c(0,1)) +
   xlab(expression(bold(paste(Delta,Delta,"G, kcal/mol")))) +
@@ -400,9 +386,9 @@ p1 = ggplot(dsDat) +
   geom_rect(aes(xmin=5, xmax=50, ymin=-0.05, ymax=1.05), fill="cyan", alpha=0.1) +
   geom_line(aes(meanRead_perSeq, value, color = key), stat = "summary", fun.y = "median", size = 0.25) +
   geom_point(aes(meanRead_perSeq, value, color = key), stat = "summary", fun.y = "median", size = 0.25) +
-  geom_vline(xintercept = 100, lty = 2, size = 0.25) +
   theme(aspect.ratio = 1/2,
-        legend.text.align = 0) +
+        legend.text.align = 0,
+        legend.key.size = unit(0.3, "cm")) +
   xlab("Mean reads per sequence") +
   ylab("Median") +
   scale_x_log10(limits = c(0.1,1000),
@@ -504,143 +490,6 @@ p2 = ggplot() +
 pp = cowplot::plot_grid(p1,p2,nrow=1)
 
 ggsave("~/Flanks/Images/f3pB.svg", plot = pp, height = 3, width = 8.7, units = "cm")
-
-```
-
-## Panel C: Selected binding curves
-```{r}
-pho4Curves = 
-  fread("~/Flank_seq/data/pho4BindingCurves.csv", sep = ",", header = T) %>%
-  tbl_df() %>%
-  rename(ID = Onum, fBound = R, Conc = Ch) %>%
-  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
-  createCurves(.) %>%
-  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("~/Flank_seq/data/seq2ID_pho4.txt", header = F) %>%
-    unite("flank",V3,V5,sep="_") %>%
-    select(index = V1, flank) %>%
-    mutate(index = paste("ID",index,sep=""))) %>%
-  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
-  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()),
-         estimate = percent_rank(estimate))
-
-estSpread = pho4Curves %>% arrange(estimate) %>% .$estimate %>% unique()
-
-#plot
-colPal = brewer.pal(9,"Set1")
-p1 = ggplot(pho4Curves %>% filter(estimate == estSpread[32]|estimate == estSpread[31]|estimate == estSpread[20]|estimate == estSpread[10]|estimate == estSpread[1])) +
-  geom_point(aes(Conc,fBound,color=flank), size = 0.25) +
-  geom_line(aes(Conc,.fitted,color=flank), size = 0.25) +
-  presentation +
-  theme(aspect.ratio = 1, 
-        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
-  ylab("Ratio DNA/protein") +
-  xlab("Substrate concentration, nM") +
-  xlim(c(0,100)) +
-  scale_color_manual("", values = colPal)
-
-ggsave("~/Flanks/Images/f3pC.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
-```
-
-## Panel D: Composite additive of Pho4 + Cbf1 correlated to titration data (scaled and offset)
-```{r}
-# per-sequence correlation
-allseqDat = 
-  counts.df %>% 
-  inner_join(std_kd,.,by=c("flank","protein")) %>%
-  select(flank,stdE,stdE.err,ddG,protein)
-
-# additive model correlation (extracting fit error too)
-alladdDat = foreach(i = 1:2, .combine = "rbind")%do%{
-  protSet = c("pho4","cbf1")
-  tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, flank, X01:X10,ddG)
-  mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
-  predMod = predict(mod, std_kd %>% filter(protein == protSet[i]))
-  left_join(std_kd %>% filter(protein == protSet[i]) %>% select(protein,stdE,stdE.err,flank) %>% mutate(.fitted = predMod), tmp %>% select(protein,flank,ddG))
-}
-
-# combine per-sequence and additive model data
-crossallDat = 
-  alladdDat %>% 
-  gather(key,value,ddG,.fitted) %>%
-  distinct() %>%
-  mutate(key = ifelse(key == "ddG","Individual ddG","Mononucleotide model"), 
-         protein = ifelse(protein == "pho4","Pho4","Cbf1"),
-         protein = factor(protein, levels = c("Pho4","Cbf1")))
-
-# all Pearson r2
-crossallDat %>%
-  na.omit() %>%
-  group_by(protein,key) %>%
-  summarise(r2 = cor(stdE,value)^2) %>%
-  kable()
-
-# lm of titration vs ddG to extract slope
-slopeDf = foreach(i = c("Pho4","Cbf1"), .combine = "rbind")%do%{
-  iSlice = crossallDat %>% filter(protein == i, key == "Mononucleotide model") %>% distinct()
-  mod = lm(stdE ~ value, iSlice)
-  tidy(mod) %>% 
-    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
-    select(term,estimate) %>%
-    spread(term,estimate) %>%
-    mutate(protein = i)
-}
-
-# scale seq data by titration data
-crossallDat2 = 
-  crossallDat %>%
-  left_join(.,slopeDf) %>%
-  filter(key == "Mononucleotide model") %>%
-  mutate(key = "mononucleotide model",
-         value = (value*slope) + int, 
-         protein = factor(protein, levels = c("Pho4","Cbf1")))
-
-# plot
-p1 = ggplot(crossallDat2, aes(stdE,value)) +
-  presentation +
-  geom_abline(slope = 1, intercept = 0, lty = 2, color = "red") + # centered on middle of x-scale
-  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err),size = 0.25) +
-  geom_point(size = 0.25) +
-  facet_grid(key ~ protein, scale = "free") +
-  theme(aspect.ratio = 1,
-        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
-  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol")))) +
-  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) 
-
-ggsave("~/Flanks/Images/f3pD.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
-
-# Analysis
-# output all data scaled and offset
-allScaled = foreach(i = 1:2, .combine = "rbind")%do%{
-  protSet = c("pho4","cbf1")
-  tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, flank, X01:X10,ddG)
-  mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
-  predMod = predict(mod, tmp %>% select(X01:X10) %>% distinct())
-  tmp %>%
-    select(X01:X10) %>%
-    distinct() %>%
-    mutate(.fitted = predMod, protein = i)
-}
-
-# return Kd range
-allScaled %>%
-  tbl_df() %>%
-  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
-  left_join(.,slopeDf) %>%
-  mutate(.scaled = (.fitted*slope) + int,
-         Kd = exp(.scaled/0.593)*1E9) %>%
-  group_by(protein) %>%
-  summarise(minval = min(Kd), maxval = max(Kd), medval = median(Kd))
-
-# return dG range
-allScaled %>%
-  tbl_df() %>%
-  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
-  left_join(.,slopeDf) %>%
-  mutate(.scaled = (.fitted*slope) + int,
-         Kd = exp(.scaled/0.593)*1E9) %>%
-  group_by(protein) %>%
-  summarise(minval = min(.scaled), maxval = max(.scaled), medval = median(.scaled))
 ```
 
 # Figure 4:
@@ -758,7 +607,7 @@ labelDf2 =
   filter(id <= 3) %>% 
   ungroup() %>% 
   select(protein,flank,id,colVal,feature) %>% 
-  left_join(.,data.frame(id = c(1:3,3:1), yPos = c(0.1,0.075,0.05,-0.1,-0.125,-0.15), colVal = c(1,1,1,-1,-1,-1)))
+  left_join(.,data.frame(id = c(1:3,3:1), yPos = c(0.22,0.15,0.07,-0.1,-0.17,-0.24), colVal = c(1,1,1,-1,-1,-1)))
 
 lassoPlot2 = 
   left_join(lassoPlot, labelDf2) %>% 
@@ -767,10 +616,9 @@ lassoPlot2 =
 p1 = ggplot(lassoPlot2) +
   presentation +
   geom_line(aes(lambda,estimate,group=interaction(variable,base), color = colVal), size = 0.25) +
-  theme(aspect.ratio = 1, 
-        legend.position = "none") +
+  theme(legend.position = "none") +
   ylab("Variable coefficient") +
-  xlab("Penalty coefficient, lambda") +
+  xlab(expression(bold(paste("Penalty coefficient, ", lambda)))) +
   scale_x_reverse() +
   geom_label(data = labelDf2,  
              aes(x = 0.055, y = yPos, label = flank, color = colVal), 
@@ -779,13 +627,17 @@ p1 = ggplot(lassoPlot2) +
              label.padding = unit(0.1, "lines"),
              label.r = unit(0.05, "lines")) +
   scale_color_gradient2(high = "red", mid = "gray", low = "blue") +
-  facet_wrap(~ protein+feature, nrow = 1)
+  facet_wrap(~ protein+feature, nrow = 1) +
+  ylim(c(-0.25,0.25))
 
-ggsave("~/Flanks/Images/f4pB.svg", plot = p1, height = 8, width = 17.8, units = "cm")
+ggsave("~/Flanks/Images/f4pB.svg", plot = p1, height = 5, width = 17, units = "cm")
 ```
 
 # Figure 5:
-## Panel C: ChiP overlay
+## Panel A: Analysis flow chart
+## Panel B: Interpretation scatter
+## Panel C: Pareto plot
+## Panel D: ChiP overlay
 ```{r}
 shockDf = 
   bind_rows(fread(paste0("~/Flank_seq/data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
