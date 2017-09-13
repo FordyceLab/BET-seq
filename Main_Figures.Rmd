@@ -65,14 +65,14 @@ prot = "pho4"
 ###
 
 shockDf = 
-  fread(paste0("~/Flank_seq/data/shock_pho4.txt"), header = T) %>% 
-  mutate(protein = prot) %>% 
-  tbl_df()
+  fread(paste0("~/Flank_seq/data/shock_",prot,".txt"), header = T) %>% 
+  mutate(t = t/2) %>% #create hemisphere
+  tbl_df() %>%
+  bind_rows(data.frame(flank = NA, ddG = NA, cc = 11, t = 2*pi))
 
-  
 labelDf = 
   shockDf %>%
-  group_by(cc,protein) %>%
+  group_by(cc) %>%
   summarise(count = n()) %>%
   ungroup() %>%
   mutate(rolling = cumsum(count), 
@@ -80,7 +80,7 @@ labelDf =
          filling = paste0(count, "   "))
 
 # circle plot
-p1 = ggplot(nnfitCor %>% filter(protein == prot)) +
+p1 = ggplot(shockDf) +
   geom_point(aes(t,cc,color=ddG)) +
   coord_polar(start = -pi/2) +
   ylim(c(0,10)) +
@@ -280,11 +280,11 @@ returnDf2 =
          readTotal = log10(readTotal),
          libSize = log10(libSize),
          libSize = factor(libSize, labels = c(
-           expression(bold(paste("lib. = 10"^"2"))),
-           expression(bold(paste("lib. = 10"^"3"))),
-           expression(bold(paste("lib. = 10"^"4"))),
-           expression(bold(paste("lib. = 10"^"5"))),
-           expression(bold(paste("lib. = 10"^"6")))
+           expression(bold(paste("lib. size = 10"^"2"))),
+           expression(bold(paste("lib. size = 10"^"3"))),
+           expression(bold(paste("lib. size = 10"^"4"))),
+           expression(bold(paste("lib. size= 10"^"5"))),
+           expression(bold(paste("lib. size = 10"^"6")))
          )))
 
 colPal = colorRampPalette(brewer.pal(9,"YlOrRd"))(10)
@@ -412,21 +412,20 @@ dsDat %>%
 ## Panel A: Composite additive model of Pho4 and Cbf1
 ```{r}
 # additive model plots
-outAdd = addMotif(counts.df, "ddG") %>% 
+outAdd = addMotif(countsNN_scaled %>% 
+  select(flank, ddG = scaled_ddG, protein) %>% 
+  mutate(target = flank, rep = 1) %>% 
+  separate(target, paste0("X", sprintf("%02d", 1:10)),1:9), "ddG") %>% 
   mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A"))) %>%  
   group_by(monuc.value,monuc.pos,protein,side) %>% 
-  summarise(totalmean = mean(monuc.meanval), sem = sd(monuc.meanval)/sqrt(n())) %>% # SEM across replicates
+  summarise(totalmean = mean(monuc.meanval)) %>% 
   ungroup()
-
-#write.table(outAdd, "~/Desktop/additive.txt", col.names = T, row.names = F, quote = F, sep = "\t")
   
 relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
   iSlice = outAdd %>% filter(protein == i)
   minRow = iSlice %>% filter(totalmean == min(totalmean))
   iSlice %>%
-    mutate(affinitySEM = sqrt(((sem/totalmean)^2)+((minRow$sem/minRow$totalmean)^2)), 
-           affinityFrac = totalmean/minRow$totalmean,
-           affinitySEM = abs(affinityFrac*affinitySEM))
+    mutate(affinityFrac = totalmean/minRow$totalmean)
 } %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1"))) %>%
@@ -436,7 +435,6 @@ relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
 # composite textmap
 p1 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
-  geom_errorbar(aes(x = monuc.pos, ymin = affinityFrac - affinitySEM, ymax = affinityFrac + affinitySEM),size = 0.2,width=0.2) +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2.5) +
   theme(aspect.ratio = 1, 
         legend.position = "none",
@@ -518,45 +516,45 @@ listDfPos = foreach(i = 1:intClass)%do%{
 ###
 
 # # Subset and encode dataframe for LASSO input 
-# doMC::registerDoMC(cores = 40)
-# 
-# summDat = counts.df %>% filter(protein == protVal) %>% group_by(flank) %>% summarise(ddG = mean(ddG,na.rm = T))
-# testDat = encodeTerms(summDat, 10000, 2, listDfPos)
-# 
-# # Classify predictor and response elements
-# options(contrasts=c(ordered='contr.Dummy', unordered='contr.Dummy')) # no intercept
-# x <- model.matrix( ~ .-1, testDat %>% select(contains("Var")))
-# y <- testDat %>% .$ddG
-# 
-# # Perform LASSO regression
-# fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
-# fitLasso = tidy(fit.lasso)
-# write.table(fitLasso, paste0("~/Flank_seq/data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
-# 
-# # 10-fold cross validation
-# cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
-# cvLasso = tidy(cv.lasso) 
-# write.table(cvLasso, paste0("~/Flank_seq/data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+doMC::registerDoMC(cores = 40)
+
+summDat = countsNN_scaled %>% filter(protein == protVal)
+testDat = encodeTerms(summDat, 10000, 2, listDfPos)
+
+# Classify predictor and response elements
+options(contrasts=c(ordered='contr.Dummy', unordered='contr.Dummy')) # no intercept
+x <- model.matrix( ~ .-1, testDat %>% select(contains("Var")))
+y <- testDat %>% .$ddG
+
+# Perform LASSO regression
+fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
+fitLasso = tidy(fit.lasso)
+write.table(fitLasso, paste0("~/Flank_seq/data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+
+# 10-fold cross validation
+cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
+cvLasso = tidy(cv.lasso)
+write.table(cvLasso, paste0("~/Flank_seq/data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # # Extract coefficients
-# dfVar = 
-#   coef(cv.lasso) %>% 
-#   as.data.frame.matrix() %>% 
-#   tbl_df() %>% 
-#   mutate(vars = coef(cv.lasso) %>% rownames()) %>% 
-#   rename(coef = `1`) %>% 
-#   filter(vars != "(Intercept)") %>%
-#   separate(vars, c("pos","term"),"[.]") %>%
-#   group_by(coef,pos,term) %>%
-#   mutate(row = substring(pos,4,nchar(pos)) %>% as.integer(),
-#          flank = convertFlank(term,row,listDfPos)) %>%
-#   ungroup() %>%
-#   select(flank, coef) %>%
-#   group_by(flank) %>%
-#   mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
-#          elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
-#   ungroup()
-# write.table(dfVar, paste0("~/Flank_seq/data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+dfVar =
+  coef(cv.lasso) %>%
+  as.data.frame.matrix() %>%
+  tbl_df() %>%
+  mutate(vars = coef(cv.lasso) %>% rownames()) %>%
+  rename(coef = `1`) %>%
+  filter(vars != "(Intercept)") %>%
+  separate(vars, c("pos","term"),"[.]") %>%
+  group_by(coef,pos,term) %>%
+  mutate(row = substring(pos,4,nchar(pos)) %>% as.integer(),
+         flank = convertFlank(term,row,listDfPos)) %>%
+  ungroup() %>%
+  select(flank, coef) %>%
+  group_by(flank) %>%
+  mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
+         elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
+  ungroup()
+write.table(dfVar, paste0("~/Flank_seq/data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 ###
 
