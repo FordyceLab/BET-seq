@@ -695,3 +695,138 @@ pLeg = ggplot(overlayDf) +
 
 ggsave("~/Flanks/Images/f5pCleg.png", plot = pLeg, height = 12, width = 12, units = "cm", dpi = 600)
 ```
+
+
+
+
+########
+########
+########
+
+# Tyler figures
+
+
+# Comparisons between mono- and dinucleotide models and NN predictions
+
+Setup for the figures: make models with NN-predicted data and save to model_outputs.txt. This step is usually run on Zion.
+
+```{r eval=FALSE}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(broom)
+
+# Function to create models and extract predicted values
+create_models <- function(data) {
+  
+  # Get the protein name
+  dataset_name <- data$protein[1]
+  
+  # Select remove proetin column
+  data <- select(data, -protein)
+  
+  # Make the mononucleotide model
+  model <- lm(scaled_ddG ~ ., data = data)
+  mono_nuc <- augment(model, data)
+  
+  mono_nuc$model <- "mono-nucleotide"
+  
+  # Make nearest neighbor dinucleotide model
+  model <- lm(scaled_ddG ~ X01 +X02 + X03 + X04 + X05 +
+                X06 + X07 + X09 + X10 +
+                X01:X02 + X02:X03 + X03:X04 + X04:X05 +
+                X06:X07 + X07:X08 + X08:X09 + X09:X10, data = data)
+  nearest_n <- augment(model, data)
+  
+  nearest_n$model <- "nearest neighbor"
+  
+  # Make full dinucleotide model
+  model <- lm(scaled_ddG ~ .*., data = data)
+  di_nuc <- augment(model, data)
+  
+  di_nuc$model <- "di-nucleotide"
+  
+  # Join and output all the data
+  model_preds <- bind_rows(mono_nuc, nearest_n, di_nuc)
+  
+  model_preds$dataset <- dataset_name
+  
+  return(model_preds)
+}
+
+# Read in and ajust the NN predicted ddG values
+data <- fread("~/Flank_seq/data/scaled_nn_preds.txt") %>% 
+  select(flank, protein, scaled_ddG) %>% 
+  separate(flank, into=paste0("X", sprintf("%02d", 1:10)), sep = 1:9)
+
+# Generate models and get predicted values for all models for all preoteins
+model_outputs <- data %>% 
+  group_by(protein) %>% 
+  do(create_models(.))
+
+# Write model results to text file
+write.table(model_outputs, "~/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+```
+
+## Read in the preprocessed data
+```{r}
+# Read in model output data and put into simple model form
+model_outputs <- fread("~/model_outputs.txt")
+
+simple_model_data <- model_outputs %>% 
+  ungroup() %>% 
+  unite(flank, X01:X10, sep = "") %>%
+  rename(ddG = scaled_ddG) %>% 
+  select(flank, ddG, .fitted, model, dataset) %>% 
+  mutate(model = ifelse(model == "mono-nucleotide",
+                        "mononucleotide", ifelse(model == "nearest neighbor",
+                                                 "nearest neighbor", "dinucleotide")),
+         model = factor(model, levels = c("mononucleotide", "nearest neighbor", "dinucleotide")),
+         dataset = factor(dataset, levels = c("Pho4", "Cbf1")))
+
+```
+
+## Mononucleotide models 
+```{r}
+ggplot(simple_model_data %>% filter(model == "mononucleotide"), aes(x = .fitted, y = ddG)) +
+  geom_hex(bins = 50) +
+  scale_fill_gradient2(name = "Count", trans = "log",
+                       low = "black", mid = "red", high = "yellow", midpoint = 6,
+                       breaks = c(1, 10, 100, 1000, 10000)) +
+  facet_grid(model~dataset) +
+  coord_fixed() +
+  xlab(TeX("\\textbf{Linear model predicted $\\Delta \\Delta G$, kcal/mol}")) +
+  ylab(TeX("\\textbf{Neural network predicted $\\Delta \\Delta G$, kcal/mol}")) +
+  presentation +
+  theme(legend.key.size = unit(0.25, "cm"))
+
+ggsave("~/Flanks/Images/f3pX.svg", width = 10, height = 6,
+       units = "cm")
+```
+
+## Dinucleotide models
+```{r}
+ggplot(simple_model_data %>% filter(model != "mononucleotide"), aes(x = .fitted, y = ddG)) +
+  geom_hex(bins = 50) +
+  scale_fill_gradient2(name = "Count", trans = "log",
+                       low = "black", mid = "red", high = "yellow", midpoint = 6,
+                       breaks = c(1, 10, 100, 1000, 10000)) +
+  facet_grid(model~dataset) +
+  coord_fixed() +
+  xlab(TeX("\\textbf{Linear model prediction $\\Delta \\Delta G$, kcal/mol}")) +
+  ylab(TeX("\\textbf{Neural network prediction $\\Delta \\Delta G$, kcal/mol}")) +
+  presentation +
+  theme(legend.key.size = unit(0.25, "cm"))
+
+ggsave("~/Flanks/Images/f4pX.svg", width = 10, height = 6,
+       units = "cm")
+```
+
+
+
+
+
+
+
+

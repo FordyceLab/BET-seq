@@ -1139,3 +1139,48 @@ cor(longCounts %>% select(-flank) %>% as.matrix(), use = "complete.obs")^2 %>%
   print() 
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Neural network training curves
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+cbf1_training <- read.table("~/Flank_seq/data/cbf1_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Cbf1")
+
+pho4_training <- read.table("~/Flank_seq/data/pho4_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Pho4")
+
+training_data <- bind_rows(cbf1_training, pho4_training) %>% 
+  mutate(protein = factor(protein, levels = c("Pho4", "Cbf1")))
+
+ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
+  facet_grid(protein~., scales = "free_y") +
+  geom_line() + 
+  presentation +
+  scale_color_manual(values = c("red", "blue"))
+
+ggsave("~/Flanks/Images/SX.svg", height = 5, width = 5)
+```
+
