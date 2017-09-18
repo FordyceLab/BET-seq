@@ -1,0 +1,108 @@
+---
+title: "Deprecated"
+author: "Dan"
+date: "9/17/2017"
+output: html_document
+---
+
+## Panel D: Composite additive of Pho4 + Cbf1 correlated to titration data (scaled and offset)
+```{r}
+# per-sequence correlation
+allseqDat = 
+  counts.df %>% 
+  inner_join(std_kd,.,by=c("flank","protein")) %>%
+  select(flank,stdE,stdE.err,ddG,protein)
+
+# additive model correlation (extracting fit error too)
+alladdDat = foreach(i = 1:2, .combine = "rbind")%do%{
+  protSet = c("pho4","cbf1")
+  tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, flank, X01:X10,ddG)
+  mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
+  predMod = predict(mod, std_kd %>% filter(protein == protSet[i]))
+  left_join(std_kd %>% filter(protein == protSet[i]) %>% select(protein,stdE,stdE.err,flank) %>% mutate(.fitted = predMod), tmp %>% select(protein,flank,ddG))
+}
+
+# combine per-sequence and additive model data
+crossallDat = 
+  alladdDat %>% 
+  gather(key,value,ddG,.fitted) %>%
+  distinct() %>%
+  mutate(key = ifelse(key == "ddG","Individual ddG","Mononucleotide model"), 
+         protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, levels = c("Pho4","Cbf1")))
+
+# all Pearson r2
+crossallDat %>%
+  na.omit() %>%
+  group_by(protein,key) %>%
+  summarise(r2 = cor(stdE,value)^2) %>%
+  kable()
+
+# lm of titration vs ddG to extract slope
+slopeDf = foreach(i = c("Pho4","Cbf1"), .combine = "rbind")%do%{
+  iSlice = crossallDat %>% filter(protein == i, key == "Mononucleotide model") %>% distinct()
+  mod = lm(stdE ~ value, iSlice)
+  tidy(mod) %>% 
+    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
+    select(term,estimate) %>%
+    spread(term,estimate) %>%
+    mutate(protein = i)
+}
+
+# scale seq data by titration data
+crossallDat2 = 
+  crossallDat %>%
+  left_join(.,slopeDf) %>%
+  filter(key == "Mononucleotide model") %>%
+  mutate(key = "mononucleotide model",
+         value = (value*slope) + int, 
+         protein = factor(protein, levels = c("Pho4","Cbf1")))
+
+# plot
+p1 = ggplot(crossallDat2, aes(stdE,value)) +
+  presentation +
+  geom_abline(slope = 1, intercept = 0, lty = 2, color = "red") + # centered on middle of x-scale
+  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err),size = 0.25) +
+  geom_point(size = 0.25) +
+  facet_grid(key ~ protein, scale = "free") +
+  theme(aspect.ratio = 1,
+        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) 
+
+ggsave("~/Flanks/Images/f3pD.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
+
+# Analysis
+# output all data scaled and offset
+allScaled = foreach(i = 1:2, .combine = "rbind")%do%{
+  protSet = c("pho4","cbf1")
+  tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, flank, X01:X10,ddG)
+  mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
+  predMod = predict(mod, tmp %>% select(X01:X10) %>% distinct())
+  tmp %>%
+    select(X01:X10) %>%
+    distinct() %>%
+    mutate(.fitted = predMod, protein = i)
+}
+
+# return Kd range
+allScaled %>%
+  tbl_df() %>%
+  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
+  left_join(.,slopeDf) %>%
+  mutate(.scaled = (.fitted*slope) + int,
+         Kd = exp(.scaled/0.593)*1E9) %>%
+  group_by(protein) %>%
+  summarise(minval = min(Kd), maxval = max(Kd), medval = median(Kd))
+
+# return dG range
+allScaled %>%
+  tbl_df() %>%
+  mutate(protein = ifelse(protein == 1, "Pho4","Cbf1")) %>%
+  left_join(.,slopeDf) %>%
+  mutate(.scaled = (.fitted*slope) + int,
+         Kd = exp(.scaled/0.593)*1E9) %>%
+  group_by(protein) %>%
+  summarise(minval = min(.scaled), maxval = max(.scaled), medval = median(.scaled))
+```
+

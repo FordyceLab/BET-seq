@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 16.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 width="612px" height="792px" viewBox="0 0 612 792" enable-background="new 0 0 612 792" xml:space="preserve">
+<path opacity="0.5" fill="#F68B1F" stroke="#000000" stroke-miterlimit="10" d="M75.041,139.841c0,1.412-1.981,2.556-4.425,2.556
+	H23.412c-2.444,0-4.425-1.144-4.425-2.556v-6.389c0-1.412,1.981-2.556,4.425-2.556h47.204c2.444,0,4.425,1.144,4.425,2.556V139.841z
+	"/>
+<path opacity="0.5" fill="#F68B1F" stroke="#000000" stroke-miterlimit="10" d="M188.219,141.757c0,2.258-1.692,4.088-3.78,4.088
+	h-40.315c-2.088,0-3.78-1.831-3.78-4.088v-10.221c0-2.258,1.692-4.088,3.78-4.088h40.315c2.088,0,3.78,1.831,3.78,4.088V141.757z"/>
+<path opacity="0.5" fill="#F68B1F" stroke="#000000" stroke-miterlimit="10" d="M136.076,163.309c0,2.258-2.151,4.088-4.805,4.088
+	H80.024c-2.653,0-4.805-1.831-4.805-4.088v-10.221c0-2.258,2.151-4.088,4.805-4.088h51.247c2.653,0,4.805,1.831,4.805,4.088V163.309
+	z"/>
+<path opacity="0.5" fill="#F68B1F" stroke="#000000" stroke-miterlimit="10" d="M122.772,116.265c0,2.258-1.211,4.088-2.704,4.088
+	H91.227c-1.493,0-2.704-1.831-2.704-4.088v-10.221c0-2.258,1.211-4.088,2.704-4.088h28.842c1.493,0,2.704,1.831,2.704,4.088V116.265
+	z"/>
+<path opacity="0.5" fill="#662D91" stroke="#000000" stroke-miterlimit="10" d="M75.217,40.643c0,1.412-1.981,2.556-4.425,2.556
+	H23.588c-2.444,0-4.425-1.144-4.425-2.556v-6.389c0-1.412,1.981-2.556,4.425-2.556h47.204c2.444,0,4.425,1.144,4.425,2.556V40.643z"
+	/>
+<path opacity="0.5" fill="#662D91" stroke="#000000" stroke-miterlimit="10" d="M186.449,42.559c0,2.258-1.211,4.088-2.704,4.088
+	h-28.842c-1.493,0-2.704-1.831-2.704-4.088V32.338c0-2.258,1.211-4.088,2.704-4.088h28.842c1.493,0,2.704,1.831,2.704,4.088V42.559z
+	"/>
+<text transform="matrix(1 0 0 1 25.832 138.0908)" font-family="'ArialMT'" font-size="6">mononucleotide</text>
+<text transform="matrix(0.9891 0 0 1 83.3379 155.8525)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">nearest neighbor</tspan><tspan x="6.504" y="7.2" font-family="'ArialMT'" font-size="6">dinucleotide</tspan></text>
+<text transform="matrix(1 0 0 1 94.1411 12.2915)" font-family="'ArialMT'" font-size="6">raw data</text>
+<path fill="none" stroke="#000000" stroke-miterlimit="10" d="M124.647,14.042c0,1.412-1.343,2.556-3,2.556h-32
+	c-1.656,0-3-1.144-3-2.556V7.653c0-1.412,1.344-2.556,3-2.556h32c1.657,0,3,1.144,3,2.556V14.042z"/>
+<g>
+	<text transform="matrix(1 0 0 1 94.1411 86.1943)" font-family="'ArialMT'" font-size="6">raw data</text>
+	<path fill="none" stroke="#000000" stroke-miterlimit="10" d="M124.647,87.944c0,1.412-1.343,2.556-3,2.556h-32
+		c-1.656,0-3-1.144-3-2.556v-6.389c0-1.412,1.344-2.556,3-2.556h32c1.657,0,3,1.144,3,2.556V87.944z"/>
+</g>
+<text transform="matrix(0.9891 0 0 1 97.3989 108.999)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">neural</tspan><tspan x="-2.165" y="7.2" font-family="'ArialMT'" font-size="6">network</tspan></text>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.647" y1="90.5" x2="105.647" y2="99.528"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.647" y1="120.354" x2="78.164" y2="135.314"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.647" y1="120.354" x2="138.317" y2="136.646"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.647" y1="120.354" x2="105.647" y2="146.072"/>
+<polygon points="108.413,97.1 105.609,101.956 102.806,97.1 "/>
+<polygon points="108.413,143.644 105.609,148.5 102.806,143.644 "/>
+<polygon points="81.202,137.03 75.616,136.551 78.823,131.952 "/>
+<polygon points="136.726,132.517 134.178,137.511 139.777,137.222 "/>
+<text transform="matrix(1 0 0 1 26.0083 38.8931)" font-family="'ArialMT'" font-size="6">mononucleotide</text>
+<path opacity="0.5" fill="#662D91" stroke="#000000" stroke-miterlimit="10" d="M108.837,64.256c0,2.258-2.151,4.088-4.805,4.088
+	H52.786c-2.653,0-4.805-1.831-4.805-4.088V54.035c0-2.258,2.151-4.088,4.805-4.088h51.247c2.653,0,4.805,1.831,4.805,4.088V64.256z"
+	/>
+<path opacity="0.5" fill="#662D91" stroke="#000000" stroke-miterlimit="10" d="M163.807,64.256c0,2.258-1.692,4.088-3.78,4.088
+	h-40.315c-2.088,0-3.779-1.831-3.779-4.088V54.035c0-2.258,1.691-4.088,3.779-4.088h40.315c2.088,0,3.78,1.831,3.78,4.088V64.256z"
+	/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.609" y1="16.597" x2="78.164" y2="35.742"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.609" y1="16.597" x2="79.481" y2="48.152"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.609" y1="16.597" x2="138.519" y2="48.152"/>
+<line fill="none" stroke="#000000" stroke-miterlimit="10" x1="105.609" y1="16.597" x2="149.012" y2="35.742"/>
+<polygon points="81.326,36.612 75.775,37.401 77.867,32.199 "/>
+<polygon points="83.669,47.326 78.411,49.271 79.355,43.745 "/>
+<polygon points="137.988,43.841 139.72,49.174 134.235,48.008 "/>
+<polygon points="148.422,32.613 151.794,37.093 146.229,37.774 "/>
+<g>
+	<g>
+		<polyline fill="none" stroke="#000000" stroke-miterlimit="10" points="190.167,167.666 190.167,169.666 188.167,169.666 		"/>
+		
+			<line fill="none" stroke="#000000" stroke-miterlimit="10" stroke-dasharray="3.9225,3.9225" x1="184.244" y1="169.666" x2="21.461" y2="169.666"/>
+		<polyline fill="none" stroke="#000000" stroke-miterlimit="10" points="19.5,169.666 17.5,169.666 17.5,167.666 		"/>
+		
+			<line fill="none" stroke="#000000" stroke-miterlimit="10" stroke-dasharray="3.8696,3.8696" x1="17.5" y1="163.796" x2="17.5" y2="80.601"/>
+		<polyline fill="none" stroke="#000000" stroke-miterlimit="10" points="17.5,78.666 17.5,76.666 19.5,76.666 		"/>
+		
+			<line fill="none" stroke="#000000" stroke-miterlimit="10" stroke-dasharray="3.9225,3.9225" x1="23.422" y1="76.666" x2="186.205" y2="76.666"/>
+		<polyline fill="none" stroke="#000000" stroke-miterlimit="10" points="188.167,76.666 190.167,76.666 190.167,78.666 		"/>
+		
+			<line fill="none" stroke="#000000" stroke-miterlimit="10" stroke-dasharray="3.8696,3.8696" x1="190.167" y1="82.536" x2="190.167" y2="165.731"/>
+	</g>
+</g>
+<text transform="matrix(-4.371139e-08 -1 1 -4.371139e-08 9.5225 142)" font-family="'Arial-BoldMT'" font-size="6">Interpretation</text>
+<text transform="matrix(-4.371139e-08 -1 1 -4.371139e-08 5.9219 56.3716)"><tspan x="0" y="0" font-family="'Arial-BoldMT'" font-size="6">Comparative</tspan><tspan x="4.84" y="7.2" font-family="'Arial-BoldMT'" font-size="6">modeling</tspan></text>
+<text transform="matrix(0.9891 0 0 1 56.0996 56.7993)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">nearest neighbor</tspan><tspan x="6.504" y="7.2" font-family="'ArialMT'" font-size="6">dinucleotide</tspan></text>
+<text transform="matrix(0.9891 0 0 1 136.9009 56.9897)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">all</tspan><tspan x="-14.511" y="7.2" font-family="'ArialMT'" font-size="6">dinucleotides</tspan></text>
+<text transform="matrix(0.9891 0 0 1 161.0752 35.293)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">neural</tspan><tspan x="-2.165" y="7.2" font-family="'ArialMT'" font-size="6">network</tspan></text>
+<text transform="matrix(0.9891 0 0 1 161.3125 134.4907)"><tspan x="0" y="0" font-family="'ArialMT'" font-size="6">all</tspan><tspan x="-14.511" y="7.2" font-family="'ArialMT'" font-size="6">dinucleotides</tspan></text>
+</svg>

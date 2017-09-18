@@ -7,28 +7,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 source("~/Flank_seq/Figures/setup.R")
-
-presentation <-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5,
-                                  family = "Arial",
-                                  face = "bold",
-                                  size = 12),
-        axis.title = element_text(family = "Arial",
-                                  face = "bold",
-                                  size = 6),
-        axis.text = element_text(family = "Arial",
-                                 face = "bold",
-                                 size = 6),
-        legend.text = element_text(family = "Arial",
-                                   face = "bold",
-                                   size = 6),
-        legend.title = element_text(family = "Arial",
-                                    face = "bold",
-                                    size = 6),
-        strip.text = element_text(family = "Arial",
-                                  face = "bold",
-                                  size = 6),
-        strip.text.x = element_text(vjust = 0))
 ```
 
 #Figure 1:
@@ -37,7 +15,6 @@ presentation <-  theme_bw() +
 ## Panel C: Sequencing quantitation
 ## Panel B: Landscape
 ```{r}
-
 foreach(prot = c("pho4","cbf1"))%dopar%{
   bestFlank =
     countsNN_scaled %>%
@@ -125,9 +102,6 @@ readDat2 =
 
 predPWM = augment(lm(spec_ddG ~ Var5+Var7+Var8+Var9+Var10, data = readDat2)) %>% 
   tbl_df()
-
-
-i = 10000; j = 1
 
 # perform sampling
 dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equally between bound and unbound
@@ -276,7 +250,7 @@ returnDf2 =
   gather(key,value,r2,seqObsPct) %>% 
   tbl_df() %>%
   mutate(key = ifelse(key == "r2", 1, 2),
-         key = factor(key, labels = c(TeX("$\\textbf{Pearson's}$ $\\mathbf{r^2}$"), TeX("$\\textbf{fract. obs.}$"))),
+         key = factor(key, labels = c(TeX("$\\textbf{Pearson's}$ $\\textbf{\\textit{r}}$$\\mathbf{^2}$"), TeX("$\\textbf{fract. obs.}$"))),
          readTotal = log10(readTotal),
          libSize = log10(libSize),
          libSize = factor(libSize, labels = c(
@@ -395,11 +369,13 @@ p1 = ggplot(dsDat) +
                 breaks = c(0.1,1,10,100,1000),
                 labels = expression(bold("10"^"-1"),bold("10"^"0"),bold("10"^"1"),bold("10"^"2"),bold("10"^"3"))) +
   scale_color_manual(labels = c(expression("fract. obs.",
-                                           bold(paste("Pearson's ","r"^"2")))),
+                                           bold(paste("Pearson's ",italic(r)^"2")))),
                      "", 
                      values = colPal[1:2])
 
 ggsave("~/Flanks/Images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pC.png", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pC.eps", plot = p1, height = 3, width = 8.7, units = "cm")
 
 dsDat %>% 
   tbl_df() %>% 
@@ -416,24 +392,14 @@ outAdd = addMotif(countsNN_scaled %>%
   select(flank, ddG = scaled_ddG, protein) %>% 
   mutate(target = flank, rep = 1) %>% 
   separate(target, paste0("X", sprintf("%02d", 1:10)),1:9), "ddG") %>% 
-  mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A"))) %>%  
-  group_by(monuc.value,monuc.pos,protein,side) %>% 
-  summarise(totalmean = mean(monuc.meanval)) %>% 
-  ungroup()
-  
-relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
-  iSlice = outAdd %>% filter(protein == i)
-  minRow = iSlice %>% filter(totalmean == min(totalmean))
-  iSlice %>%
-    mutate(affinityFrac = totalmean/minRow$totalmean)
-} %>% 
+  mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A"))) %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1"))) %>%
   left_join(., data.frame(monuc.value = c("A","C","G","T"), colPal = c("#55C341","#3036DF","#F0E328","#EF1717"))) %>% 
   mutate(colPal = as.character(colPal))
 
 # composite textmap
-p1 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
+p1 = ggplot(outAdd,aes(monuc.pos, monuc.meanval)) +
   presentation +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2.5) +
   theme(aspect.ratio = 1, 
@@ -442,12 +408,14 @@ p1 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
         panel.grid.minor = element_blank(),
         axis.text.x = element_text(angle = 45,
                                    hjust = 1)) +
-  ylab("Relative affinity") +
+  ylab(expression(bold(paste("Mean ", Delta, Delta,"G, kcal/mol")))) +
   xlab("Flank position") +
+  scale_y_reverse() +
   facet_grid(.~protein, scales = "free") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
 ggsave("~/Flanks/Images/f3pA.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pA.png", plot = p1, height = 4.5, width = 8.7, units = "cm")
 ```
 
 ## Panel B: PWM from literature of Pho4 and Cbf1
@@ -516,45 +484,45 @@ listDfPos = foreach(i = 1:intClass)%do%{
 ###
 
 # # Subset and encode dataframe for LASSO input 
-doMC::registerDoMC(cores = 40)
-
-summDat = countsNN_scaled %>% filter(protein == protVal)
-testDat = encodeTerms(summDat, 10000, 2, listDfPos)
-
-# Classify predictor and response elements
-options(contrasts=c(ordered='contr.Dummy', unordered='contr.Dummy')) # no intercept
-x <- model.matrix( ~ .-1, testDat %>% select(contains("Var")))
-y <- testDat %>% .$ddG
-
-# Perform LASSO regression
-fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
-fitLasso = tidy(fit.lasso)
-write.table(fitLasso, paste0("~/Flank_seq/data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
-
-# 10-fold cross validation
-cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
-cvLasso = tidy(cv.lasso)
-write.table(cvLasso, paste0("~/Flank_seq/data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
-
-# # Extract coefficients
-dfVar =
-  coef(cv.lasso) %>%
-  as.data.frame.matrix() %>%
-  tbl_df() %>%
-  mutate(vars = coef(cv.lasso) %>% rownames()) %>%
-  rename(coef = `1`) %>%
-  filter(vars != "(Intercept)") %>%
-  separate(vars, c("pos","term"),"[.]") %>%
-  group_by(coef,pos,term) %>%
-  mutate(row = substring(pos,4,nchar(pos)) %>% as.integer(),
-         flank = convertFlank(term,row,listDfPos)) %>%
-  ungroup() %>%
-  select(flank, coef) %>%
-  group_by(flank) %>%
-  mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
-         elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
-  ungroup()
-write.table(dfVar, paste0("~/Flank_seq/data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+# doMC::registerDoMC(cores = 40)
+# 
+# summDat = countsNN_scaled %>% filter(protein == protVal) %>% select(flank, protein, ddG = scaled_ddG)
+# testDat = encodeTerms(summDat, 10000, 2, listDfPos)
+# 
+# # Classify predictor and response elements
+# options(contrasts=c(ordered='contr.Dummy', unordered='contr.Dummy')) # no intercept
+# x <- model.matrix( ~ .-1, testDat %>% select(contains("Var")))
+# y <- testDat %>% .$ddG
+# 
+# # Perform LASSO regression
+# fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
+# fitLasso = tidy(fit.lasso)
+# write.table(fitLasso, paste0("~/Flank_seq/data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+# 
+# # 10-fold cross validation
+# cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
+# cvLasso = tidy(cv.lasso)
+# write.table(cvLasso, paste0("~/Flank_seq/data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+# 
+# # # Extract coefficients
+# dfVar =
+#   coef(cv.lasso) %>%
+#   as.data.frame.matrix() %>%
+#   tbl_df() %>%
+#   mutate(vars = coef(cv.lasso) %>% rownames()) %>%
+#   rename(coef = `1`) %>%
+#   filter(vars != "(Intercept)") %>%
+#   separate(vars, c("pos","term"),"[.]") %>%
+#   group_by(coef,pos,term) %>%
+#   mutate(row = substring(pos,4,nchar(pos)) %>% as.integer(),
+#          flank = convertFlank(term,row,listDfPos)) %>%
+#   ungroup() %>%
+#   select(flank, coef) %>%
+#   group_by(flank) %>%
+#   mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
+#          elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
+#   ungroup()
+# write.table(dfVar, paste0("~/Flank_seq/data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 ###
 
@@ -605,7 +573,7 @@ labelDf2 =
   filter(id <= 3) %>% 
   ungroup() %>% 
   select(protein,flank,id,colVal,feature) %>% 
-  left_join(.,data.frame(id = c(1:3,3:1), yPos = c(0.22,0.15,0.07,-0.1,-0.17,-0.24), colVal = c(1,1,1,-1,-1,-1)))
+  left_join(.,data.frame(id = c(1:3,3:1), yPos = c(0.6,0.4,0.2,-0.7,-0.9,-1.1), colVal = c(1,1,1,-1,-1,-1)))
 
 lassoPlot2 = 
   left_join(lassoPlot, labelDf2) %>% 
@@ -619,14 +587,14 @@ p1 = ggplot(lassoPlot2) +
   xlab(expression(bold(paste("Penalty coefficient, ", lambda)))) +
   scale_x_reverse() +
   geom_label(data = labelDf2,  
-             aes(x = 0.055, y = yPos, label = flank, color = colVal), 
+             aes(x = 0.22, y = yPos, label = flank, color = colVal), 
              inherit.aes = F, 
              size = 1.75, 
              label.padding = unit(0.1, "lines"),
              label.r = unit(0.05, "lines")) +
   scale_color_gradient2(high = "red", mid = "gray", low = "blue") +
   facet_wrap(~ protein+feature, nrow = 1) +
-  ylim(c(-0.25,0.25))
+  ylim(c(-1.2,0.7))
 
 ggsave("~/Flanks/Images/f4pB.svg", plot = p1, height = 5, width = 17, units = "cm")
 ```
