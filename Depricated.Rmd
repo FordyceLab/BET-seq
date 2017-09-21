@@ -5,6 +5,74 @@ date: "9/17/2017"
 output: html_document
 ---
 
+
+##Table S8: titration binding sequences
+```{r}
+fread("~/Flank_seq/data/titrationseq_di.txt", header = F) %>% 
+  rename(Index = V1, Sequence = V2) %>% 
+  mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
+         Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
+  select(Sequence) %>% 
+  xtable() %>% 
+  print()
+```
+
+
+## Table S6: epistasis binding results
+```{r}
+fread("~/Flank_seq/data/stdEpistasis1.csv", header = T) %>%
+  tbl_df() %>%
+  mutate(Sequence = gsub(" ","",Sequence)) %>% # remove white space
+  mutate(Sequence = substring(Sequence,16,31), Sequence = gsub("CACGTG","_",Sequence)) %>% # isolate flanks
+  select(flank = Sequence, estimate, std.error) %>%
+  mutate(kd = estimate/1E9,
+         stdE.err = (std.error/estimate)*0.593,
+         stdE = log(kd) * 0.593,
+         target = flank) %>% 
+  select(Sequence = flank, estimate, std.error) %>% 
+  mutate(estimate = round(estimate), std.error = round(std.error)) %>% 
+  arrange(estimate) %>% 
+  bind_rows(.,pho4EpiCurves %>% 
+              group_by(flank) %>% 
+              summarise(estimate = mean(estimate), std.error = mean(std.error)) %>% 
+              filter(flank == "negative control") %>% 
+              rename(Sequence = flank)) %>% 
+  xtable(digits = 0) %>% 
+  print()   
+```
+
+
+## Figure S14: Cbf1 + Pho4 LASSO gapped position distribution
+```{r}
+dfSpace2 = 
+  dfSpace %>%
+  group_by(protein) %>%
+  mutate(Observed = count/sum(count)) %>%
+  select(protein,Observed,space) %>%
+  spread(protein,Observed) %>%
+  mutate(correct = c(8,8:1), 
+         Theoretical = correct/sum(correct),
+         Pho4 = Pho4/sum(Pho4),
+         Cbf1 = Cbf1/sum(Cbf1)) %>%
+  gather(protein,value,Pho4,Cbf1) %>%
+  mutate(protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
+  gather(type,density,Theoretical,value)
+
+#plot
+colPal = brewer.pal(9,"Set1")
+S14 = ggplot(dfSpace2) +
+  presentation +
+  geom_bar(aes(space,density, fill = type), stat = "identity", position = "dodge") +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.2, "cm")) +
+  ylab("Probability density") +
+  xlab("Number of gapped positions") +
+  facet_grid(protein ~ .) +
+  scale_fill_manual("", labels = c("Theoretical","Observed"), values = colPal[1:2])
+
+ggsave("~/Flanks/Images/S14.png", plot = S14, height = 7, width = 7, units = "cm")
+```
+
 ## Panel D: Composite additive of Pho4 + Cbf1 correlated to titration data (scaled and offset)
 ```{r}
 # per-sequence correlation
@@ -106,3 +174,162 @@ allScaled %>%
   summarise(minval = min(.scaled), maxval = max(.scaled), medval = median(.scaled))
 ```
 
+
+# Figure S7: Pho4 read consolidation
+```{r}
+### 10-mer vs 8-mer proof
+allseqDat = 
+  counts.df %>% 
+  filter(protein == "pho4") %>%
+  inner_join(std_kd %>% filter(protein == "pho4"),.) %>%
+  select(flank,stdE,stdE.err,ddG)
+
+alladdDat = 
+  lm(ddG ~ X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 , data = counts.df %>% filter(protein == "pho4") %>% select(X01:X10,ddG)) %>%
+  predict(.,std_kd %>% filter(protein == "pho4") %>% select(X01:X10)) %>%
+  mutate(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE), .fitted = .) 
+
+crossallDat = 
+  left_join(allseqDat,alladdDat) %>%
+  gather(key,value,ddG,.fitted) %>%
+  mutate(key = ifelse(key == "ddG","Individual ddG","Mononucleotide model"))
+
+cor(alladdDat$stdE,alladdDat$.fitted)^2
+###
+
+# Collapse the most distal nucleotides to yield 8-mer data
+read_data_8mer = 
+  counts.df %>% 
+  filter(protein == "pho4") %>%
+  mutate(flank = substr(flank, 2, 9)) %>% 
+  select(flank:X10, protein, rep)
+
+# Combine all species with the same 8-mer core
+## 8-mer seq data
+seq8mer <- read_data_8mer %>% 
+  group_by(flank, protein, rep) %>% 
+  summarize(tf_count = sum(tf_count),
+            ref_count = sum(ref_count)) %>%
+  group_by(protein,rep) %>%
+  mutate(tf_count = tf_count/sum(tf_count), # normalize to depth
+         ref_count = ref_count/sum(ref_count),
+         ddG = -log(tf_count/ref_count) * 0.593) %>%
+  separate(flank,paste0("X0",1:8),1:7) %>%
+  ungroup()
+
+## 8-mer titration data
+std8mer = 
+  std_kd %>%
+  filter(protein == "pho4") %>%
+  select(flank,stdE,stdE.err,protein,estimate) %>%
+  mutate(flank = substr(flank, 2, 9)) %>% 
+  group_by(flank, protein) %>% 
+  mutate(stdE = mean(stdE), stdE.err = mean(stdE.err), target = flank) %>%
+  separate(target,paste0("X0",1:8),1:7) %>%
+  ungroup()
+
+# 8-mer additive model
+add8mer = foreach(i = 1:4, .combine = "rbind")%do%{
+  tmp = seq8mer %>% filter(rep == i) %>% select(X01:X08,ddG)
+  lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08, data = tmp) %>%
+  predict(.,std8mer %>% select(X01:X08)) %>%
+  mutate(std8mer %>% select(flank,stdE), .fitted = ., rep = i)
+} %>%
+  group_by(rep) %>%
+  summarise(Add_r2 = cor(stdE,.fitted)^2)
+
+# 8-mer depth and species
+depth8mer = 
+  read_data_8mer %>%
+  group_by(flank, rep) %>% 
+  summarize(tf_count = sum(tf_count),
+            ref_count = sum(ref_count)) %>%
+  group_by(rep) %>% 
+  summarize(tf_count = sum(tf_count),
+            ref_count = sum(ref_count),
+            depth = min(c(tf_count,ref_count))/n()) %>%
+  select(rep,depth)
+
+# 8-mer aggregate Pearson correlation test
+cor8mer = 
+  left_join(std8mer,seq8mer) %>% 
+  select(stdE, stdE.err, ddG,rep) %>%
+  group_by(rep) %>%
+  summarise(r2 = cor(stdE, ddG)^2) %>%
+  left_join(.,add8mer) %>%
+  left_join(.,depth8mer) %>%
+  mutate(length = 8)
+
+# 10-mer seq data
+seq10mer = 
+  counts.df %>%
+  filter(protein == "pho4")
+
+# 10-mer additive data
+add10mer = foreach(i = 1:4, .combine = "rbind")%do%{
+  tmp = seq10mer %>% filter(rep == i) %>% select(X01:X10,ddG)
+  lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10, data = tmp) %>%
+  predict(.,std_kd %>% filter(protein == "pho4") %>% select(X01:X10)) %>%
+  mutate(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE), .fitted = ., rep = i)
+} %>%
+  group_by(rep) %>%
+  summarise(Add_r2 = cor(stdE,.fitted)^2)  
+
+# 8-mer depth and species
+depth10mer = 
+  counts.df %>%
+  filter(protein == "pho4") %>%
+  group_by(flank, rep) %>% 
+  summarize(tf_count = sum(tf_count),
+            ref_count = sum(ref_count)) %>%
+  group_by(rep) %>% 
+  summarize(tf_count = sum(tf_count),
+            ref_count = sum(ref_count),
+            depth = min(c(tf_count,ref_count))/n()) %>%
+  select(rep,depth)
+
+# 10-mer aggregate Pearson correlation test
+cor10mer = 
+  left_join(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE,stdE.err),seq10mer) %>% 
+  select(stdE, stdE.err, ddG,rep) %>%
+  group_by(rep) %>%
+  summarise(r2 = cor(stdE, ddG)^2) %>%
+  left_join(.,add10mer) %>%
+  left_join(.,depth10mer) %>%
+  mutate(length = 10)
+
+# Aggregate correlations
+corDepth = 
+  bind_rows(cor8mer,cor10mer) %>%
+  rename(Individual = r2, Additive = Add_r2, Mean_counts = depth, Length = length, Replicate = rep) %>%
+  gather(Pearson_cor,value,Individual,Additive)
+
+# plot v2
+corDepth2 = 
+  bind_rows(cor8mer,cor10mer) %>%
+  rename(Individual = r2, Additive = Add_r2, Mean_counts = depth, Length = length, Replicate = rep) %>%
+  gather(Pearson_cor,value,Individual,Additive) %>%
+  mutate(Length = ifelse(Length == 8,"16x","1x"), 
+         Length = factor(Length, levels = c("1x","16x")),
+         Pearson_cor = factor(Pearson_cor, 
+                              levels = c("Individual","Additive")))
+
+colPal = brewer.pal(9,"Set1")
+S7 = ggplot(corDepth2) +
+  presentation +
+  geom_bar(aes(as.factor(Length),value,fill=Pearson_cor,group=Pearson_cor),stat = "summary", fun.y = "mean",position = position_dodge(width = 0.5), width = 0.5) +
+  geom_point(aes(as.factor(Length),value,group=Pearson_cor),position = position_dodge(width = 0.5),size = 0.01) +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.3, "cm")) +
+  ylab(expression(bold(paste("Pearson r"^"2")))) +
+  xlab(expression(bold(paste("Mean reads per sequence, fold-change")))) +
+  ylim(c(0,1)) +
+  scale_fill_manual("", 
+                     values = colPal[1:2],
+                     labels = expression(bold(paste("individual ",Delta,Delta,"G")),
+                                         bold("mononucleotide model")),
+                     guide = guide_legend(label.vjust = 0.5,
+                                          label.hjust = 0))
+
+ggsave("~/Flanks/Images/S7.png", plot = S7, height = 5, width = 10, units = "cm")
+```

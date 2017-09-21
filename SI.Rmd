@@ -6,29 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-source("~/Flank_seq/Figures/setup.R")
-
-presentation <-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5,
-                                  family = "Arial",
-                                  face = "bold",
-                                  size = 12),
-        axis.title = element_text(family = "Arial",
-                                  face = "bold",
-                                  size = 6),
-        axis.text = element_text(family = "Arial",
-                                 face = "bold",
-                                 size = 6),
-        legend.text = element_text(family = "Arial",
-                                   face = "bold",
-                                   size = 6),
-        legend.title = element_text(family = "Arial",
-                                    face = "bold",
-                                    size = 6),
-        strip.text = element_text(family = "Arial",
-                                  face = "bold",
-                                  size = 6),
-        strip.text.x = element_text(vjust = 0))
+source("~/Flanks/setup.R")
 ```
 
 ## Table S1: Read depths
@@ -41,10 +19,103 @@ presentation <-  theme_bw() +
   print()
 ```
 
-## Table S2: Cross correlation of mononucleotide model coefficients
+## Table S2: Raw per-sequence ddG cross correlation results
 ```{r}
+longCounts = 
+  counts.df %>% 
+  mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+  unite("newcol", protein, rep) %>% 
+  select(flank, ddG, newcol) %>% 
+  spread(newcol,ddG)
+
+cor(longCounts %>% select(-flank) %>% as.matrix(), use = "complete.obs")^2 %>% 
+  as.data.frame.matrix() %>% 
+  mutate(Var1 = rownames(.)) %>% 
+  gather(Var2,r,-Var1) %>% 
+  mutate(Var1 = sub("_"," #",Var1),
+         Var2 = sub("_"," #",Var2)) %>% 
+  tbl_df() %>% 
+  distinct() %>% 
+  mutate(pass = ifelse(as.integer(substr(Var1,nchar(Var1),nchar(Var1))) < as.integer(substr(Var2,nchar(Var2),nchar(Var2))) & substring(Var1,1,4) == substring(Var2,1,4),1,0),
+         Var1 = factor(Var1, levels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))),
+         Var2 = factor(Var2, levels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #")))) %>% 
+  filter(pass == 1) %>% 
+  select(-pass) %>% 
+  arrange(Var1,Var2) %>% 
+  xtable(digits = 2) %>% 
+  print() 
+```
+
+## Table S3: Pho4 Kd results
+```{r}
+right_join(fread("~/Google\ Drive/Flanks_data/std_kd_cbf1.csv") %>% 
+      select(Sequence,cbf1 = estimate, cbf1err = std.error) %>% 
+      mutate(core = substr(Sequence,23,28),
+             Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
+             Sequence = ifelse(core == "CAGCTG", "negative control", Sequence),
+             cbf1 = round(cbf1),
+             cbf1err = round(cbf1err)),
+      fread("~/Google\ Drive/Flanks_data/std_kd_pho4.csv") %>% 
+      select(Sequence,pho4 = estimate, pho4err = std.error) %>% 
+      mutate(core = substr(Sequence,23,28),
+             Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
+             Sequence = ifelse(core == "CAGCTG", "negative control", Sequence),
+             pho4 = round(pho4),
+             pho4err = round(pho4err))) %>% 
+  arrange(pho4,cbf1) %>% 
+  select(Sequence, pho4, pho4err, cbf1, cbf1err) %>% 
+  xtable(digits = 0) %>% 
+  print() 
+```
+
+## Table S4: NN-derived linear model correlation to NN-derived individual ddG
+```{r}
+# Held-out r^2
+training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>% 
+  rename(flank = V1)
+
+model_outputs %>%
+  anti_join(., training_data) %>% 
+  group_by(model, dataset) %>%
+  summarize(r2 = cor(scaled_ddG, .fitted)^2) %>% 
+  ungroup() %>% 
+  mutate(dataset = factor(dataset, levels = c("Pho4", "Cbf1")),
+         model = gsub("-","",model),
+         model = factor(model, levels = c("mononucleotide", "nearest neighbor", "dinucleotide"))) %>%
+  arrange(dataset,r2) %>% 
+  select(dataset,model,r2) %>% 
+  xtable(digits = 2) %>% 
+  print()
+```
+
+## Table S5: Cross correlation of mononucleotide model coefficients
+```{r}
+training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>% 
+  rename(flank = V1)
+
+lmCross = foreach(i = counts.df$protein %>% unique(), .combine = "rbind")%do%{
+  iSlice = counts.df %>% filter(protein == i) 
+  foreach(j = iSlice$rep %>% unique(), .combine = "rbind")%do%{
+    jSlice = iSlice %>% filter(rep == j) %>% left_join(training_data,.)
+    mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10, data = jSlice)
+    tidy(mod) %>% mutate(rep = j, protein = ifelse(i == "pho4","Pho4","Cbf1"))
+  }
+} %>% unite(type,protein,rep) %>%
+  select(type,estimate,term) %>%
+  spread(type,estimate)
+
+pairedDf = 
+  makePairs(lmCross, "term") %>% 
+  mutate(xvar = factor(xvar, 
+                       levels = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_")),
+                       labels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))),
+         yvar = factor(yvar, 
+                       levels = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_")),
+                       labels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))))
+
 # return correlation coefficients
-cor(pairedDf %>% select_(.dots = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_"))))^2 %>% 
+corr_val = 
+  cor(pairedDf %>% select_(.dots = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_"))))^2 %>% 
   as.data.frame.matrix() %>% 
   mutate(Var1 = rownames(.)) %>% 
   gather(Var2,r,-Var1) %>% 
@@ -57,32 +128,34 @@ cor(pairedDf %>% select_(.dots = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,s
          Var2 = factor(Var2, levels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #")))) %>% 
   filter(pass == 1) %>% 
   select(-pass) %>% 
-  arrange(desc(r)) %>% 
-  xtable(digits =3) %>% 
+  arrange(desc(r))
+
+# output table
+corr_val %>% 
+  xtable(digits = 2) %>% 
   print() 
+
+# calculate error in kcal/mol
+corr_val %>% 
+  mutate(err = 1-r) %>% 
+  filter(substring(Var1,1,4) == substring(Var2,1,4)) %>% 
+  mutate(protein = substring(Var1,1,4)) %>% 
+  group_by(protein) %>% 
+  summarise(maxval = max(err),
+            minval = min(err)) %>% 
+  left_join(.,outAdd %>% # ranges from NN-derived mononucleotide model
+    group_by(protein) %>% 
+    summarise(range = max(monuc.meanval)-min(monuc.meanval))) %>% 
+  mutate(ddG_max = maxval*range,
+         ddG_min = minval*range)
 ```
 
-## Table S3: Pho4 Kd results
-```{r}
-right_join(fread("~/Flank_seq/data/std_kd_cbf1.csv") %>% 
-      select(Sequence,cbf1 = estimate, cbf1err = std.error) %>% 
-      mutate(core = substr(Sequence,23,28),
-             Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
-             Sequence = ifelse(core == "CAGCTG", "negative control", Sequence),
-             cbf1 = round(cbf1),
-             cbf1err = round(cbf1err)),
-      fread("~/Flank_seq/data/std_kd_pho4.csv") %>% 
-      select(Sequence,pho4 = estimate, pho4err = std.error) %>% 
-      mutate(core = substr(Sequence,23,28),
-             Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
-             Sequence = ifelse(core == "CAGCTG", "negative control", Sequence),
-             pho4 = round(pho4),
-             pho4err = round(pho4err))) %>% 
-  arrange(pho4,cbf1) %>% 
-  select(Sequence, pho4, pho4err, cbf1, cbf1err) %>% 
-  xtable(digits = 0) %>% 
-  print() 
-```
+
+
+
+
+
+
 
 ## Table S4: Correlation to titration results
 ```{r}
@@ -110,43 +183,9 @@ scaleDat %>%
   print()
 ```
 
-## Table S6: epistasis binding results
-```{r}
-fread("~/Flank_seq/data/stdEpistasis1.csv", header = T) %>%
-  tbl_df() %>%
-  mutate(Sequence = gsub(" ","",Sequence)) %>% # remove white space
-  mutate(Sequence = substring(Sequence,16,31), Sequence = gsub("CACGTG","_",Sequence)) %>% # isolate flanks
-  select(flank = Sequence, estimate, std.error) %>%
-  mutate(kd = estimate/1E9,
-         stdE.err = (std.error/estimate)*0.593,
-         stdE = log(kd) * 0.593,
-         target = flank) %>% 
-  select(Sequence = flank, estimate, std.error) %>% 
-  mutate(estimate = round(estimate), std.error = round(std.error)) %>% 
-  arrange(estimate) %>% 
-  bind_rows(.,pho4EpiCurves %>% 
-              group_by(flank) %>% 
-              summarise(estimate = mean(estimate), std.error = mean(std.error)) %>% 
-              filter(flank == "negative control") %>% 
-              rename(Sequence = flank)) %>% 
-  xtable(digits = 0) %>% 
-  print()   
-```
-
 ##Table S7: titration binding sequences
 ```{r}
 fread("~/Flank_seq/data/titrationseq_mono.txt", header = F) %>% 
-  rename(Index = V1, Sequence = V2) %>% 
-  mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
-         Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
-  select(Sequence) %>% 
-  xtable() %>% 
-  print()
-```
-
-##Table S8: titration binding sequences
-```{r}
-fread("~/Flank_seq/data/titrationseq_di.txt", header = F) %>% 
   rename(Index = V1, Sequence = V2) %>% 
   mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
          Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
@@ -160,7 +199,7 @@ fread("~/Flank_seq/data/titrationseq_di.txt", header = F) %>%
 ```{r, warning=FALSE, message=FALSE, fig.width=10, fig.height=10}
 # read data
 returnDf2 =
-  fread("~/Flank_seq/data/modelSimulation.txt", header = T) %>%
+  fread("~/Google Drive/Flanks_data/modelSimulation.txt", header = T) %>%
   group_by(libSize, ddG, readTotal) %>%
   mutate(r2 = r2/seqObsPct,
          medr2 = median(r2, na.rm =T), 
@@ -210,50 +249,201 @@ S1B = ggplot(returnDf2) +
 ggsave("~/Flanks/Images/S1B.png", plot = S1B, height = 13, width = 13, units = "cm")
 ```
 
-## Figure S2: eGFP control binding preference
+## Figure S2: Replicate raw ddG distributions
 ```{r}
-# additive model plots
-outAdd = addMotif(fread("~/Flank_seq/data/countsGF.txt", header = T) %>% 
-                    na.omit() %>% 
-                    filter(!is.infinite(ddG)) %>%
-                    group_by(protein,rep) %>%
-                    mutate(ddG = ddG-mean(ddG)) %>% # mean-center
-                    ungroup(), "ddG") %>% 
-  mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A"))) %>%  
-  group_by(monuc.value,monuc.pos,protein,side) %>% 
-  summarise(totalmean = mean(monuc.meanval), sem = sd(monuc.meanval)/sqrt(n())) %>% # SEM across replicates
-  ungroup()
-
-relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
-  iSlice = outAdd %>% filter(protein == i)
-  minRow = iSlice %>% filter(totalmean == min(totalmean))
-  iSlice %>%
-    mutate(affinitySEM = sqrt(((sem/totalmean)^2)+((minRow$sem/minRow$totalmean)^2)), 
-           affinityFrac = totalmean/minRow$totalmean,
-           affinitySEM = abs(affinityFrac*affinitySEM))
-} %>% 
-  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
-         protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
-  left_join(., data.frame(monuc.value = c("A","C","G","T"), colPal = c("#55C341","#3036DF","#F0E328","#EF1717"))) %>% 
-  mutate(colPal = as.character(colPal))
-
-# composite textmap
-S2 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
+S2 = ggplot(counts.df %>% 
+         mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
+                protein = factor(protein,
+                                levels = c("Pho4", "Cbf1")),
+                rep = paste0("rep #",rep))) + 
   presentation +
-  geom_errorbar(aes(x = monuc.pos, ymin = affinityFrac - affinitySEM, ymax = affinityFrac + affinitySEM),size = 0.1,width=0.1) +
-  geom_text(aes(label = monuc.value, color = monuc.value), size = 2) +
-  theme(aspect.ratio = 1, 
-        legend.position = "none",
-        axis.text.x = element_text(angle = 45)) +
-  ylab("Relative affinity") +
-  xlab("Flank position") +
-  facet_grid(protein~., scales = "free") +
-  scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
+  theme(aspect.ratio = 1) +
+  geom_histogram(aes(ddG)) +
+  facet_grid(protein ~ rep) +
+  xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol")))) +
+  ylab("Count")
 
-ggsave("~/Flanks/Images/S2.png", plot = S2, height = 5, width = 5, units = "cm")
+ggsave("~/Flanks/Images/S2.png",S2, height = 5, width = 10, units = "cm")
 ```
 
-## Figure S3: Individual replicate binding preferences
+## Figure S3: raw ddG among Pho4 replicates
+```{r}
+wideTable = 
+  bind_rows(left_join(counts.df %>% 
+              filter(protein == "pho4", rep == 3) %>% 
+              mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+              select(flank, Pho4_1 = ddG),
+            counts.df %>% 
+              filter(protein == "pho4", rep == 4) %>% 
+              mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+              select(flank, Pho4_2 = ddG)) %>% mutate(depth = "depth = 24 million"),
+            left_join(counts.df %>% 
+              filter(protein == "pho4", rep == 1) %>% 
+              mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+              select(flank, Pho4_1 = ddG),
+            counts.df %>% 
+              filter(protein == "pho4", rep == 2) %>% 
+              mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+              select(flank, Pho4_2 = ddG)) %>% mutate(depth = "depth = 6-8 million")) %>% 
+  mutate(depth = factor(depth, levels = c("depth = 6-8 million","depth = 24 million")))
+
+  
+# all cross pairs
+S3 = ggplot(wideTable) + 
+  presentation +
+  geom_hex(aes(Pho4_1,Pho4_2), bins = 50) + 
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.3,"cm")) +
+  ylab("Pho4 replicate B") +
+  xlab("Pho4 replicate A") +
+  scale_fill_gradient2(name = "Count",
+                       trans = "log",
+                       low = "black", mid = "red", high = "yellow",
+                       midpoint = 6,
+                       breaks = c(1, 10, 100, 1000, 10000)) +
+  facet_grid(. ~ depth)
+
+ggsave("~/Flanks/Images/S3.png",S3, height = 10, width = 10, units = "cm")
+```
+
+## Figure S4: Neural network training curves
+```{r}
+cbf1_training <- read.table("~/Google\ Drive/Flanks_data/cbf1_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Cbf1")
+
+pho4_training <- read.table("~/Google\ Drive/Flanks_data/pho4_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Pho4")
+
+training_data <- bind_rows(cbf1_training, pho4_training) %>% 
+  mutate(protein = factor(protein, levels = c("Pho4", "Cbf1")))
+
+colPal = brewer.pal(9,"Set1")
+S4 = ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
+  geom_line() + 
+  presentation +
+  scale_color_manual("",values = colPal[1:2]) +
+  xlab("Epoch") +
+  presentation +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.3,"cm")) +
+  facet_grid(protein ~ ., scales = "free_y")
+
+ggsave("~/Flanks/Images/S4.png", S4, height = 6, width = 6, units = "cm")
+```
+
+## Figure S5: NN-derived ddG histograms
+```{r}
+S5 = ggplot(countsNN_scaled %>% 
+         mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
+                protein = factor(protein,
+                                levels = c("Pho4", "Cbf1")))) + 
+  presentation +
+  theme(aspect.ratio = 1) +
+  geom_histogram(aes(NN_ddG)) +
+  facet_grid(. ~ protein) +
+  xlab(expression(bold(paste("Neural network predicted ", Delta, Delta, "G, kcal/mol")))) +
+  ylab("Count")
+
+ggsave("~/Flanks/Images/S5.png", S5, height = 5, width = 7, units = "cm")
+```
+
+## Figure S6: Individual Pho4 + Cbf1 titration binding curves
+```{r}
+colPal = colorRampPalette(c("#0057E7", "#D62D20"))(32)
+pho4Curves = 
+  fread("~/Google Drive/Flanks_data/pho4BindingCurves.csv", sep = ",", header = T) %>%
+  tbl_df() %>%
+  rename(ID = Onum, fBound = R, Conc = Ch) %>%
+  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
+  createCurves(.) %>%
+  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
+  left_join(.,fread("~/Google Drive/Flanks_data/seq2ID_pho4.txt", header = F) %>%
+    unite("flank",V3,V5,sep="_") %>%
+    select(index = V1, flank) %>%
+    mutate(index = paste("ID",index,sep=""))) %>%
+  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
+  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
+
+S6A = ggplot(pho4Curves) +
+  geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
+  geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
+  presentation +
+  theme(aspect.ratio = 1, 
+        legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5),
+        panel.spacing = unit(0.2, "lines")) +
+  ylab("Intensity ratio (DNA/protein)") +
+  xlab("DNA concentration, nM") + 
+  facet_wrap( ~ flank, nrow=6) +
+  scale_color_manual(values = (colPal))
+
+ggsave("~/Flanks/Images/S6A.png", plot = S6A, height = 17, width = 13, units = "cm")
+
+cbf1Curves = 
+  fread("~/Google Drive/Flanks_data/cbf1BindingCurves.csv", sep = ",", header = T) %>%
+  tbl_df() %>%
+  rename(ID = Onum, fBound = R, Conc = Ch) %>%
+  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
+  createCurves(.) %>%
+  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
+  left_join(.,fread("~/Google Drive/Flanks_data/seq2ID_cbf1.txt", header = F) %>%
+    unite("flank",V3,V5,sep="_") %>%
+    select(index = V1, flank) %>%
+    mutate(index = paste("ID",index,sep=""))) %>%
+  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
+  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
+
+S6B = ggplot(cbf1Curves) +
+  geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
+  geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
+  presentation +
+  theme(aspect.ratio = 1, 
+        legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5),
+        panel.spacing = unit(0.2, "lines")) +
+  ylab("Intensity ratio (DNA/protein)") +
+  xlab("DNA concentration, nM") + 
+  facet_wrap( ~ flank, nrow=6) +
+  scale_color_manual(values = (colPal))
+
+ggsave("~/Flanks/Images/S6B.png", plot = S6B, height = 17, width = 13, units = "cm")
+```
+
+## Figure S7: Histogram of core vs flank
+```{r}
+coreDf = 
+  fread("~/Google Drive/Flanks_data/core_mutation_ddG.txt", header = T) %>% 
+  tbl_df() %>% 
+  mutate(type = "core") %>% 
+  bind_rows(.,countsNN_scaled %>%
+  select(sequence = flank, ddG = scaled_dG, protein) %>% 
+  group_by(protein) %>% 
+  mutate(ddG = ddG-min(ddG),
+         type = "flank") %>% 
+  ungroup()) %>% 
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, levels = c("Pho4","Cbf1")))
+
+colPal = brewer.pal(9,"Set1")
+S7 = ggplot(coreDf) +
+  presentation +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.3,"cm"),
+        legend.key = element_rect(size = 0.25)) +
+  geom_density(aes(ddG, fill = type)) +
+  facet_grid(. ~ protein) +
+  ylab("Density") +
+  xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol")))) +
+  scale_fill_manual("", values = colPal[1:2])
+
+ggsave("~/Flanks/Images/S7.png", plot = S7, height = 4.5, width = 8.7, units = "cm")
+```
+
+## Figure S8: Individual replicate binding preferences
 ```{r}
 outAdd = addMotif(counts.df, "ddG") %>% 
   mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A")))
@@ -293,7 +483,7 @@ relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
   mutate(colPal = as.character(colPal))
 
 # composite textmap
-S3 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
+S8 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2) +
   theme(aspect.ratio = 1, 
@@ -305,33 +495,15 @@ S3 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   facet_wrap(~ protein+rep+count, nrow = 2, labeller = "label_parsed") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("~/Flanks/Images/S3.png", plot = S3, height = 10, width = 10, units = "cm")
+ggsave("~/Flanks/Images/S8.png", plot = S8, height = 10, width = 10, units = "cm")
 ```
 
-## Figure S4: Cross replication of mononucleotide model coefficients
+## Figure S9: Cross replication of mononucleotide model coefficients
 ```{r}
-lmCross = foreach(i = counts.df$protein %>% unique(), .combine = "rbind")%do%{
-  iSlice = counts.df %>% filter(protein == i) 
-  foreach(j = iSlice$rep %>% unique(), .combine = "rbind")%do%{
-    jSlice = iSlice %>% filter(rep == j)
-    mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10, data = jSlice)
-    tidy(mod) %>% mutate(rep = j, protein = ifelse(i == "pho4","Pho4","Cbf1"))
-  }
-} %>% unite(type,protein,rep) %>%
-  select(type,estimate,term) %>%
-  spread(type,estimate)
 
-pairedDf = 
-  makePairs(lmCross, "term") %>% 
-  mutate(xvar = factor(xvar, 
-                       levels = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_")),
-                       labels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))),
-         yvar = factor(yvar, 
-                       levels = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_")),
-                       labels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))))
   
 # all cross pairs
-S4 = ggplot(pairedDf, aes_string(x = "x", y = "y")) + 
+S9 = ggplot(pairedDf, aes_string(x = "x", y = "y")) + 
   presentation +
   facet_grid(xvar ~ yvar, scales = "free") + 
   geom_point(size = 0.01) + 
@@ -341,339 +513,58 @@ S4 = ggplot(pairedDf, aes_string(x = "x", y = "y")) +
   ylab("Model coefficient") +
   xlab("Model coefficient")
 
-ggsave("~/Flanks/Images/S4.png", plot = S4, height = 10, width = 10, units = "cm")
+ggsave("~/Flanks/Images/S9.png", plot = S9, height = 10, width = 10, units = "cm")
 ```
 
-## Figure S5: Individual Pho4 + Cbf1 titration binding curves
+## Figure S10: eGFP control binding preference
 ```{r}
-colPal = colorRampPalette(c("#0057E7", "#D62D20"))(32)
-pho4Curves = 
-  fread("~/Flank_seq/data/pho4BindingCurves.csv", sep = ",", header = T) %>%
-  tbl_df() %>%
-  rename(ID = Onum, fBound = R, Conc = Ch) %>%
-  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
-  createCurves(.) %>%
-  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("~/Flank_seq/data/seq2ID_pho4.txt", header = F) %>%
-    unite("flank",V3,V5,sep="_") %>%
-    select(index = V1, flank) %>%
-    mutate(index = paste("ID",index,sep=""))) %>%
-  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
-  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
-
-S5A = ggplot(pho4Curves) +
-  geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
-  geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
-  presentation +
-  theme(aspect.ratio = 1, 
-        legend.position = "none",
-        axis.text.x = element_text(angle = 90, vjust = 0.5),
-        panel.spacing = unit(0.2, "lines")) +
-  ylab("Intensity ratio (DNA/protein)") +
-  xlab("DNA concentration, nM") + 
-  facet_wrap( ~ flank, nrow=6) +
-  scale_color_manual(values = (colPal))
-
-ggsave("~/Flanks/Images/S5A.png", plot = S5A, height = 17, width = 13, units = "cm")
-
-cbf1Curves = 
-  fread("~/Flank_seq/data/cbf1BindingCurves.csv", sep = ",", header = T) %>%
-  tbl_df() %>%
-  rename(ID = Onum, fBound = R, Conc = Ch) %>%
-  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
-  createCurves(.) %>%
-  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("~/Flank_seq/data/seq2ID_cbf1.txt", header = F) %>%
-    unite("flank",V3,V5,sep="_") %>%
-    select(index = V1, flank) %>%
-    mutate(index = paste("ID",index,sep=""))) %>%
-  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
-  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
-
-S5B = ggplot(cbf1Curves) +
-  geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
-  geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
-  presentation +
-  theme(aspect.ratio = 1, 
-        legend.position = "none",
-        axis.text.x = element_text(angle = 90, vjust = 0.5),
-        panel.spacing = unit(0.2, "lines")) +
-  ylab("Intensity ratio (DNA/protein)") +
-  xlab("DNA concentration, nM") + 
-  facet_wrap( ~ flank, nrow=6) +
-  scale_color_manual(values = (colPal))
-
-ggsave("~/Flanks/Images/S5B.png", plot = S5B, height = 17, width = 13, units = "cm")
-```
-
-## Figure S6: Individual ddG correlation to titration measurements
-```{r}
-# per-sequence correlation
-allseqDat = 
-  counts.df %>% 
-  inner_join(std_kd,.,by=c("flank","protein")) %>%
-  select(flank,stdE,stdE.err,ddG,protein)
-
-# additive model correlation (extracting fitter error too)
-alladdDat = foreach(i = 1:2, .combine = "rbind")%do%{
-  protSet = c("pho4","cbf1")
-  tmp = counts.df %>% filter(protein == protSet[i]) %>% select(protein, rep, flank, X01:X10,ddG)
-  mod = lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10 , data = tmp)
-  predMod = predict(mod, std_kd %>% filter(protein == protSet[i]))
-  left_join(std_kd %>% filter(protein == protSet[i]) %>% select(protein,stdE,stdE.err,flank) %>% mutate(.fitted = predMod), tmp %>% select(protein,rep,flank,ddG))
-}
-
-# combine per-sequence and additive model data
-crossallDat = 
-  alladdDat %>% 
-  select(protein, flank, stdE, stdE.err,ddG,.fitted) %>%
-  gather(key,value,ddG,.fitted) %>%
-  mutate(key = ifelse(key == "ddG","Individual ddG","Mononucleotide model"),
-         key = factor(key, labels = c(expression(bold(paste("Individual ", Delta, Delta, "G"))),
-                                      expression(bold(paste("Mononucleotide model"))))),
-         protein = ifelse(protein == "pho4","Pho4","Cbf1"),
-         protein = factor(protein, 
-                          levels = c("Pho4","Cbf1"),
-                          labels = c(expression(bold(paste("Pho4"))),
-                                     expression(bold(paste("Cbf1"))))))
-
-# plot
-S6 = ggplot(crossallDat, aes(stdE,value)) +
-  presentation +
-  geom_abline(slope = 1, intercept = 9.4, lty = 2, color = "red", size = 0.25) + # centered on middle of x-scale
-  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err), size = 0.25) +
-  geom_point(size = 0.01) +
-  facet_grid(key ~ protein, scale = "free", labeller = "label_parsed") +
-  theme(aspect.ratio = 1) +
-  ylab(expression(bold(paste("Sequencing ", Delta, Delta, "G, kcal/mol")))) +
-  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) 
-
-ggsave("~/Flanks/Images/S6.png", plot = S6, height = 7, width = 7, units = "cm")
-```
-
-# Figure S7: Pho4 read consolidation
-```{r}
-### 10-mer vs 8-mer proof
-allseqDat = 
-  counts.df %>% 
-  filter(protein == "pho4") %>%
-  inner_join(std_kd %>% filter(protein == "pho4"),.) %>%
-  select(flank,stdE,stdE.err,ddG)
-
-alladdDat = 
-  lm(ddG ~ X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 , data = counts.df %>% filter(protein == "pho4") %>% select(X01:X10,ddG)) %>%
-  predict(.,std_kd %>% filter(protein == "pho4") %>% select(X01:X10)) %>%
-  mutate(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE), .fitted = .) 
-
-crossallDat = 
-  left_join(allseqDat,alladdDat) %>%
-  gather(key,value,ddG,.fitted) %>%
-  mutate(key = ifelse(key == "ddG","Individual ddG","Mononucleotide model"))
-
-cor(alladdDat$stdE,alladdDat$.fitted)^2
-###
-
-# Collapse the most distal nucleotides to yield 8-mer data
-read_data_8mer = 
-  counts.df %>% 
-  filter(protein == "pho4") %>%
-  mutate(flank = substr(flank, 2, 9)) %>% 
-  select(flank:X10, protein, rep)
-
-# Combine all species with the same 8-mer core
-## 8-mer seq data
-seq8mer <- read_data_8mer %>% 
-  group_by(flank, protein, rep) %>% 
-  summarize(tf_count = sum(tf_count),
-            ref_count = sum(ref_count)) %>%
-  group_by(protein,rep) %>%
-  mutate(tf_count = tf_count/sum(tf_count), # normalize to depth
-         ref_count = ref_count/sum(ref_count),
-         ddG = -log(tf_count/ref_count) * 0.593) %>%
-  separate(flank,paste0("X0",1:8),1:7) %>%
+# additive model plots
+outAdd = addMotif(fread("~/Google Drive/Flanks_data/countsGF.txt", header = T) %>% 
+                    na.omit() %>% 
+                    filter(!is.infinite(ddG)) %>%
+                    group_by(rep) %>%
+                    mutate(ddG = ddG-mean(ddG)) %>% # mean-center
+                    ungroup(), "ddG") %>% 
+  mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A"))) %>%  
+  group_by(monuc.value,monuc.pos,side) %>% 
+  summarise(totalmean = mean(monuc.meanval), sem = sd(monuc.meanval)/sqrt(n())) %>% # SEM across replicates
   ungroup()
 
-## 8-mer titration data
-std8mer = 
-  std_kd %>%
-  filter(protein == "pho4") %>%
-  select(flank,stdE,stdE.err,protein,estimate) %>%
-  mutate(flank = substr(flank, 2, 9)) %>% 
-  group_by(flank, protein) %>% 
-  mutate(stdE = mean(stdE), stdE.err = mean(stdE.err), target = flank) %>%
-  separate(target,paste0("X0",1:8),1:7) %>%
-  ungroup()
+minRow = outAdd %>% filter(totalmean == min(totalmean))
 
-# 8-mer additive model
-add8mer = foreach(i = 1:4, .combine = "rbind")%do%{
-  tmp = seq8mer %>% filter(rep == i) %>% select(X01:X08,ddG)
-  lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08, data = tmp) %>%
-  predict(.,std8mer %>% select(X01:X08)) %>%
-  mutate(std8mer %>% select(flank,stdE), .fitted = ., rep = i)
-} %>%
-  group_by(rep) %>%
-  summarise(Add_r2 = cor(stdE,.fitted)^2)
+relAdd = 
+  outAdd %>%
+    mutate(affinitySEM = sqrt(((sem/totalmean)^2)+((minRow$sem/minRow$totalmean)^2)), 
+           affinityFrac = totalmean/minRow$totalmean,
+           affinitySEM = abs(affinityFrac*affinitySEM)) %>% 
+    left_join(., data.frame(monuc.value = c("A","C","G","T"), colPal = c("#55C341","#3036DF","#F0E328","#EF1717"))) %>%
+    mutate(colPal = as.character(colPal))
 
-# 8-mer depth and species
-depth8mer = 
-  read_data_8mer %>%
-  group_by(flank, rep) %>% 
-  summarize(tf_count = sum(tf_count),
-            ref_count = sum(ref_count)) %>%
-  group_by(rep) %>% 
-  summarize(tf_count = sum(tf_count),
-            ref_count = sum(ref_count),
-            depth = min(c(tf_count,ref_count))/n()) %>%
-  select(rep,depth)
-
-# 8-mer aggregate Pearson correlation test
-cor8mer = 
-  left_join(std8mer,seq8mer) %>% 
-  select(stdE, stdE.err, ddG,rep) %>%
-  group_by(rep) %>%
-  summarise(r2 = cor(stdE, ddG)^2) %>%
-  left_join(.,add8mer) %>%
-  left_join(.,depth8mer) %>%
-  mutate(length = 8)
-
-# 10-mer seq data
-seq10mer = 
-  counts.df %>%
-  filter(protein == "pho4")
-
-# 10-mer additive data
-add10mer = foreach(i = 1:4, .combine = "rbind")%do%{
-  tmp = seq10mer %>% filter(rep == i) %>% select(X01:X10,ddG)
-  lm(ddG ~ X01 + X02 + X03 + X04 + X05 + X06 + X07 + X08 + X09 + X10, data = tmp) %>%
-  predict(.,std_kd %>% filter(protein == "pho4") %>% select(X01:X10)) %>%
-  mutate(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE), .fitted = ., rep = i)
-} %>%
-  group_by(rep) %>%
-  summarise(Add_r2 = cor(stdE,.fitted)^2)  
-
-# 8-mer depth and species
-depth10mer = 
-  counts.df %>%
-  filter(protein == "pho4") %>%
-  group_by(flank, rep) %>% 
-  summarize(tf_count = sum(tf_count),
-            ref_count = sum(ref_count)) %>%
-  group_by(rep) %>% 
-  summarize(tf_count = sum(tf_count),
-            ref_count = sum(ref_count),
-            depth = min(c(tf_count,ref_count))/n()) %>%
-  select(rep,depth)
-
-# 10-mer aggregate Pearson correlation test
-cor10mer = 
-  left_join(std_kd %>% filter(protein == "pho4") %>% select(flank,stdE,stdE.err),seq10mer) %>% 
-  select(stdE, stdE.err, ddG,rep) %>%
-  group_by(rep) %>%
-  summarise(r2 = cor(stdE, ddG)^2) %>%
-  left_join(.,add10mer) %>%
-  left_join(.,depth10mer) %>%
-  mutate(length = 10)
-
-# Aggregate correlations
-corDepth = 
-  bind_rows(cor8mer,cor10mer) %>%
-  rename(Individual = r2, Additive = Add_r2, Mean_counts = depth, Length = length, Replicate = rep) %>%
-  gather(Pearson_cor,value,Individual,Additive)
-
-# plot v2
-corDepth2 = 
-  bind_rows(cor8mer,cor10mer) %>%
-  rename(Individual = r2, Additive = Add_r2, Mean_counts = depth, Length = length, Replicate = rep) %>%
-  gather(Pearson_cor,value,Individual,Additive) %>%
-  mutate(Length = ifelse(Length == 8,"16x","1x"), 
-         Length = factor(Length, levels = c("1x","16x")),
-         Pearson_cor = factor(Pearson_cor, 
-                              levels = c("Individual","Additive")))
-
-colPal = brewer.pal(9,"Set1")
-S7 = ggplot(corDepth2) +
+# composite textmap
+S10 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
-  geom_bar(aes(as.factor(Length),value,fill=Pearson_cor,group=Pearson_cor),stat = "summary", fun.y = "mean",position = position_dodge(width = 0.5), width = 0.5) +
-  geom_point(aes(as.factor(Length),value,group=Pearson_cor),position = position_dodge(width = 0.5),size = 0.01) +
-  theme(aspect.ratio = 1,
-        legend.key.size = unit(0.3, "cm")) +
-  ylab(expression(bold(paste("Pearson r"^"2")))) +
-  xlab(expression(bold(paste("Mean reads per sequence, fold-change")))) +
-  ylim(c(0,1)) +
-  scale_fill_manual("", 
-                     values = colPal[1:2],
-                     labels = expression(bold(paste("individual ",Delta,Delta,"G")),
-                                         bold("mononucleotide model")),
-                     guide = guide_legend(label.vjust = 0.5,
-                                          label.hjust = 0))
+  geom_errorbar(aes(x = monuc.pos, ymin = affinityFrac - affinitySEM, ymax = affinityFrac + affinitySEM),size = 0.1,width=0.1) +
+  geom_text(aes(label = monuc.value, color = monuc.value), size = 2) +
+  theme(aspect.ratio = 1, 
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45)) +
+  ylab("Relative affinity") +
+  xlab("Flank position") +
+  scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("~/Flanks/Images/S7.png", plot = S7, height = 5, width = 10, units = "cm")
+ggsave("~/Flanks/Images/S10.png", plot = S10, height = 5, width = 5, units = "cm")
 ```
 
-## Figure S8: Dinucleotides vs titration correlation
-```{r,fig.height=10, fig.width=10}
-# STOP! must be run on server; n <= 2
-# termsDf = createTerms(2)
-# 
-# foreach(i = c("pho4","cbf1"))%do%{
-#   predCor = createPred(termsDf,counts.df %>% filter(protein == i),std_kd %>% filter(protein == i)) %>% mutate(ddGError = std.error/estimate)
-#   write.table(predCor, paste0("~/Flank_seq/data/lm_",i,"_pred.txt") , quote = F, row.names = F, col.names = T)
-# }
+## Figure S11: Pho4 bomber (mono + di)
 
-predCor = bind_rows(fread("~/Flank_seq/data/lm_pho4_pred.txt", header = T) %>% mutate(protein = "pho4"),
-                    fread("~/Flank_seq/data/lm_cbf1_pred.txt", header = T) %>% mutate(protein = "cbf1")) %>% 
-  select(protein,flank,model,.fitted) %>%
-  left_join(.,std_kd %>% select(flank,stdE,stdE.err,protein)) %>%
-  mutate(model = factor(model, levels = c("1-nuc","Nearest-2-nuc","2-nuc")),
-         protein = ifelse(protein == "pho4","Pho4","Cbf1"),
-         protein = factor(protein, levels = c("Pho4","Cbf1"))) %>%
-  tbl_df()
-
-# scale seq data by titration data
-slopeDf = foreach(i = c("Pho4","Cbf1"), .combine = "rbind")%do%{
-  iSlice = predCor %>% filter(protein == i)
-  foreach(j = iSlice$model %>% unique(), .combine = "rbind")%do%{
-    mod = lm(stdE ~ .fitted, iSlice)
-    tidy(mod) %>% 
-      mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
-      select(term,estimate) %>%
-      spread(term,estimate) %>%
-      mutate(protein = i, model = j)
-  }
-}
-
-scaleDat = 
-  left_join(predCor,slopeDf) %>%
-  mutate(.fitted = (.fitted * slope) + int,
-         model = factor(model, labels = c(expression(bold(paste("Mononucleotide"))),
-                                          expression(bold(paste("Nearest neighbor"))),
-                                          expression(bold(paste("Dinucleotide"))))),
-         protein = factor(protein, 
-                          levels = c("Pho4","Cbf1"),
-                          labels = c(expression(bold(paste("Pho4"))),
-                                     expression(bold(paste("Cbf1"))))))
-
-# plot
-S8 = ggplot(scaleDat, aes(stdE,.fitted)) +
-  presentation +
-  geom_errorbarh(aes(x = stdE, xmin = stdE + stdE.err, xmax = stdE - stdE.err), size = 0.25) +
-  geom_point(size = 0.01) +
-  theme(aspect.ratio = 1) +
-  facet_grid(protein ~ model, scales = "free", labeller = "label_parsed") +
-  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol")))) +
-  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol"))))
-
-ggsave("~/Flanks/Images/S8.png", plot = S8, height = 8, width = 8, units = "cm")
-```
-
-## Figure S9: Cbf1 + Pho4 LASSO 10-fold CV confidence interval + extracted coefficients table
+## Figure S12: Cbf1 + Pho4 LASSO 10-fold CV confidence interval + extracted coefficients table
 ```{r}
 cvLasso = bind_rows(fread("~/Flank_seq/data/lassoCV_pho4.txt", header = T) %>% mutate(protein = "Pho4"),
                     fread("~/Flank_seq/data/lassoCV_cbf1.txt", header = T) %>% mutate(protein = "Cbf1")) %>%
   mutate(protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # CV plot
-S9 = ggplot(cvLasso) +
+S12 = ggplot(cvLasso) +
   presentation + 
   geom_errorbar(aes(x = lambda, ymax = conf.high, ymin = conf.low), size = 0.20) +
   theme(aspect.ratio = 1) +
@@ -682,7 +573,7 @@ S9 = ggplot(cvLasso) +
   ylab("Mean squared error") +
   facet_grid(protein ~ ., scales = "free")
 
-ggsave("~/Flanks/Images/S9.png", plot = S9, height = 7, width = 7, units = "cm")
+ggsave("~/Flanks/Images/S12.png", plot = S12, height = 7, width = 7, units = "cm")
 
 # protVal = "cbf1"
 # dfVar = fread(paste0("~/Flank_seq/data/dfVar_",protVal,".txt"), header = T)
@@ -694,7 +585,7 @@ ggsave("~/Flanks/Images/S9.png", plot = S9, height = 7, width = 7, units = "cm")
 write.table(cvLasso, "~/Flanks/SuppData/supp_data1.csv", sep = ",", row.names = F, col.names = T, quote = F)
 ```
 
-## Figure S10: Cbf1 + Pho4 LASSO magnitudes
+## Figure S13: Cbf1 + Pho4 LASSO magnitudes
 ```{r}
 dfVar = bind_rows(fread("~/Flank_seq/data/dfVar_cbf1.txt", header =T) %>% mutate(protein = "Cbf1"),
                   fread("~/Flank_seq/data/dfVar_pho4.txt", header =T) %>% mutate(protein = "Pho4")) %>%
@@ -713,7 +604,7 @@ dfSpace =
 
 #plot
 colPal = brewer.pal(9,"Set1")
-S10 = ggplot(dfSpace, aes(space,fractVal)) +
+p1 = ggplot(dfSpace, aes(space,fractVal)) +
   presentation +
   geom_bar(aes(fill = protein),stat = "identity", position = "dodge") +
   theme(aspect.ratio = 1,
@@ -722,39 +613,225 @@ S10 = ggplot(dfSpace, aes(space,fractVal)) +
   xlab("Number of gapped positions") +
   scale_fill_manual("", values = colPal[1:2])
 
-ggsave("~/Flanks/Images/S10.png", plot = S10, height = 5, width = 10, units = "cm")
-```
-
-## Figure S11: Cbf1 + Pho4 LASSO gapped position distribution
-```{r}
-dfSpace2 = 
-  dfSpace %>%
-  group_by(protein) %>%
-  mutate(Observed = count/sum(count)) %>%
-  select(protein,Observed,space) %>%
-  spread(protein,Observed) %>%
-  mutate(correct = c(8,8:1), 
-         Theoretical = correct/sum(correct),
-         Pho4 = Pho4/sum(Pho4),
-         Cbf1 = Cbf1/sum(Cbf1)) %>%
-  gather(protein,value,Pho4,Cbf1) %>%
-  mutate(protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
-  gather(type,density,Theoretical,value)
-
-#plot
-colPal = brewer.pal(9,"Set1")
-S11 = ggplot(dfSpace2) +
+p2 = ggplot(dfVar %>% 
+              mutate(elements = ifelse(elements == 1, "mononucleotide","dinucleotide"),
+                     elements = factor(elements, levels = c("mononucleotide","dinucleotide")),
+                     protein = factor(protein, levels = c("Pho4", "Cbf1")))) +
   presentation +
-  geom_bar(aes(space,density, fill = type), stat = "identity", position = "dodge") +
   theme(aspect.ratio = 1,
-        legend.key.size = unit(0.2, "cm")) +
-  ylab("Probability density") +
-  xlab("Number of gapped positions") +
-  facet_grid(protein ~ .) +
-  scale_fill_manual("", labels = c("Theoretical","Observed"), values = colPal[1:2])
+        legend.key.size = unit(0.3,"cm")) +
+  geom_boxplot(aes(protein,coef,color = as.factor(elements)), size = 0.1, outlier.size = 0.25, position = "dodge") +
+  ylab("Model coefficient") +
+  xlab("") +
+  scale_color_manual("", values = colPal[3:4])
+  
+S13 = cowplot::plot_grid(p2,p1,nrow = 2,scale = c(0.98,1), align = "v")  
+ggsave("~/Flanks/Images/S13.png", plot = S13, height = 10, width = 10, units = "cm")  
 
-ggsave("~/Flanks/Images/S11.png", plot = S11, height = 7, width = 7, units = "cm")
+# analysis of coef differences
+dfVar %>% 
+  group_by(elements) %>% 
+  summarise(minval = min(coef),
+            maxval = max(coef))
 ```
+
+Figure S14: All titration measurement correlations
+```{r}
+refs =
+  bind_rows(std_kd %>% 
+              select(flank, protein, stdE) %>% 
+              mutate(source = "present",
+                     protein = ifelse(protein == "pho4", "Pho4", "Cbf1")),
+            fread("~/Google\ Drive/Flanks_data/Nat_gen_titration.txt", header = T) %>% 
+              tbl_df() %>% 
+              select(flank,stdE = Maerkl_ddG) %>% 
+              mutate(protein = "Pho4",
+                     source = "Rajkumar et. al."),
+            
+
+    
+    
+    
+# NN-complete
+corr_mat2 = 
+  std_kd %>% 
+
+  mutate,
+         model = "neural network",
+         rep = 1) %>% 
+  left_join(.,model_outputs %>% select(flank, protein, .fitted = scaled_ddG)) %>% 
+  distinct()
+
+# raw measurements
+corr_mat3 = 
+  std_kd %>% 
+  select(flank, protein, stdE) %>% 
+  mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
+         model = "unprocessed") %>% 
+  left_join(.,counts.df %>% select(flank, protein, .fitted = ddG, rep) %>% mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")))
+
+corr_full = 
+  bind_rows(corr_mat2, corr_mat3) %>% 
+  mutate(model = gsub("-","",model),
+         model = factor(model, levels = c("unprocessed","neural network")),
+         protein = factor(protein, levels = c("Pho4", "Cbf1")),
+         source = "Present")
+
+labelDf = 
+  corr_full %>% 
+  group_by(protein, model, source) %>% 
+  summarise(r2 = cor(stdE,.fitted)^2) %>% 
+  mutate(r2 = round(r2, 2))
+
+S14 = ggplot(corr_full) +
+  presentation + 
+  theme(aspect.ratio = 1) +
+  geom_point(aes(.fitted,stdE), size = 0.25) +
+  facet_grid(protein ~ model) +
+  geom_label(data = labelDf, aes(x = 0.75, y = -10, label = r2), 
+             inherit.aes = F, size = 2, 
+             label.padding = unit(0.1, "lines"),
+             label.r = unit(0.1, "lines")) +
+  ylab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Sequencing-based ", Delta, Delta, "G, kcal/mol"))))
+
+ggsave("~/Flanks/Images/S14.png", plot = S14, height = 10, width = 15, units = "cm")  
+```
+
+Figure S15: Validation to Maerkl Nat Genetics titration measurements
+```{r}
+df = 
+
+# linear models derived from NN
+corr_mat1 =
+  df %>% 
+  left_join(.,model_outputs %>% select(flank, protein, .fitted, model))
+
+# NN-complete
+corr_mat2 = 
+  df %>% 
+  mutate(model = "neural network") %>% 
+  left_join(.,model_outputs %>% select(flank, protein, .fitted = scaled_ddG)) %>% 
+  distinct()
+
+# raw measurements
+corr_mat3 = 
+  df %>% 
+  mutate(model = "unprocessed") %>% 
+  left_join(.,counts.df %>% select(flank, protein, .fitted = ddG, rep) %>% mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")))
+
+corr_full = 
+  bind_rows(corr_mat1, corr_mat2, corr_mat3) %>% 
+  mutate(model = gsub("-","",model),
+         model = factor(model, levels = c("unprocessed","mononucleotide", "nearest neighbor", "dinucleotide", "neural network")))
+
+labelDf = 
+  corr_full %>% 
+  group_by(protein, model) %>% 
+  summarise(r2 = cor(stdE,.fitted)^2) %>% 
+  mutate(r2 = round(r2, 2),
+         r2 = ifelse(is.na(r2),0,r2))
+
+S15 = ggplot(corr_full) +
+  presentation + 
+  theme(aspect.ratio = 1) +
+  geom_point(aes(.fitted,stdE), size = 0.25) +
+  facet_grid(protein ~ model) +
+  geom_label(data = labelDf, aes(x = 1, y = 0.5, label = r2),
+             inherit.aes = F, size = 2,
+             label.padding = unit(0.1, "lines"),
+             label.r = unit(0.1, "lines")) +
+  ylab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Sequencing-based ", Delta, Delta, "G, kcal/mol"))))
+
+ggsave("~/Flanks/Images/S15.png", plot = S15, height = 10, width = 15, units = "cm")  
+```
+
+
+
+
+
+## Figure S6: Raw vs. titration correlation
+```{r}
+crossallDat = 
+  counts.df %>% 
+  select(protein, flank, ddG) %>%
+  left_join(std_kd %>% select(flank, stdE, stdE.err),.) %>% 
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1")))
+
+# plot
+S6 = ggplot(crossallDat, aes(stdE,ddG)) +
+  presentation +
+  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err), size = 0.25) +
+  geom_point(size = 0.01) +
+  theme(aspect.ratio = 1) +
+  ylab(expression(bold(paste("Unprocessed ", Delta, Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  facet_grid(protein ~ .)
+
+ggsave("~/Flanks/Images/S6.png", plot = S6, height = 7, width = 7, units = "cm")
+```
+
+## Figure S8: Dinucleotides vs titration correlation
+```{r,fig.height=10, fig.width=10}
+predCor = 
+  model_outputs %>% 
+  tbl_df() %>% 
+  select(X01:X10, .fitted, protein, model)
+
+plotOut = 
+  std_kd %>% 
+  mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+  select(X01:X10, protein, stdE, stdE.err) %>% 
+  left_join(.,predCor)
+
+scaleDat = 
+  plotOut %>%
+  mutate(model = factor(model, labels = c(expression(bold(paste("Mononucleotide"))),
+                                          expression(bold(paste("Nearest neighbor"))),
+                                          expression(bold(paste("Dinucleotide"))))),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1"),
+                          labels = c(expression(bold(paste("Pho4"))),
+                                     expression(bold(paste("Cbf1"))))))
+
+# plot
+S8 = ggplot(scaleDat, aes(stdE,.fitted)) +
+  presentation +
+  geom_errorbarh(aes(x = stdE, xmin = stdE + stdE.err, xmax = stdE - stdE.err), size = 0.25) +
+  geom_point(size = 0.01) +
+  theme(aspect.ratio = 1) +
+  facet_grid(protein ~ model, scales = "free", labeller = "label_parsed") +
+  ylab(expression(bold(paste("Linear model ", Delta,Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol"))))
+
+ggsave("~/Flanks/Images/S8.png", plot = S8, height = 8, width = 8, units = "cm")
+
+
+# correlation of linear model predictions vs titration
+plotOut %>% 
+  group_by(model,protein) %>% 
+  summarise(r2 = cor(stdE, .fitted)^2) %>% 
+  xtable() %>% 
+  print()
+
+# correlation of linear model preditions vs NN-derived ddG
+corOut = 
+  left_join(predCor %>% unite("flank",X01:X10,sep="") %>% select(flank,.fitted,protein,model), countsNN_scaled %>% select(flank,scaled_ddG,protein) %>% mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")))
+
+corOut %>% 
+  group_by(protein, model) %>% 
+  summarise(r2 = cor(.fitted,scaled_ddG)^2) %>%
+  xtable() %>% 
+  print()
+  
+```
+
+
+
+
 
 ## Figure S12: Epistasis Pho4 titration binding curves
 ```{r}
@@ -869,53 +946,39 @@ ggsave("~/Flanks/Images/S14.png", plot = S14, height = 4, width = 6, units = "cm
 
 ## Figure S15: Pho4 transcription rate and induction
 ```{r}
-scaledNN = 
-  left_join(countsNN.df %>% filter(protein == "pho4"),slopeDf) %>%
-  mutate(ddG = (ddG*slope)+int)
-
 rateVal = 
   fread("~/Flank_seq/data/transcriptionRate.txt", header = F, sep = "\t", stringsAsFactors = F) %>%
   transmute(ID = V1, seq = V2, rate = V3, std.error = V4) %>%
-  mutate(flank = paste0(substring(seq,1,3),substring(seq,10,12))) %>%
-  separate(flank,paste0("X0", 3:8),1:5) %>%
-  left_join(., scaledNN %>% select(X03:X08, ddG)) %>%
-  group_by(seq) %>%
-  summarise(rate = mean(rate), std.error = mean(std.error),ddG.sd = sd(ddG), ddG = mean(ddG))
+  mutate(flank = paste0(substring(seq,1,5),substring(seq,12,16))) %>%
+  left_join(., countsNN_scaled %>% filter(protein == "pho4") %>% select(flank, scaled_dG))
+
+write.table(rateVal, "~/Desktop/trans.txt", col.names = T, row.names = F, quote = F, sep = "\t")
 
 # P1 = rate plot
-p1 = ggplot(rateVal, aes(rate,ddG)) +
-  geom_errorbar(aes(x = rate, ymax = ddG + ddG.sd, ymin = ddG - ddG.sd), size = 0.2) +
-  geom_errorbarh(aes(x = rate, xmax = rate + std.error, xmin = rate - std.error), size = 0.2) +
+p1 = ggplot(rateVal, aes(scaled_dG, rate)) +
+  geom_errorbar(aes(x = scaled_dG, ymax = rate + std.error, ymin = rate - std.error), size = 0.2) +
   geom_point(size = 0.01) +
   presentation +
   theme(aspect.ratio = 1) +
-  coord_flip() +
-  xlab("Transcription rate, AU") +
-  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
+  ylab("Transcription rate, AU") +
+  xlab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
 
 expVal = 
   fread("~/Flank_seq/data/NARexpression.txt", header = T, sep = "\t") %>%
-  mutate(flank = paste(up,down,sep = ""), target = flank) %>%
-  group_by(flank,target) %>%
-  summarise(induction = c0/c10000) %>%
-  separate(target,paste0("X0", 4:7),1:3) %>%
-  ungroup() %>%
-  select(-flank) %>%
-  left_join(.,scaledNN %>% mutate(flank = paste(X04,X05,X06,X07,sep=""))) %>%
-  group_by(flank) %>%
-  summarise(induction = mean(induction),ddG.sd = sd(ddG), ddG = mean(ddG))
+  mutate(flank = paste("ATC",up,down,"TGC",sep = ""),
+         induction = c0/c10000) %>%
+  select(flank,induction) %>%
+  left_join(.,countsNN_scaled %>% filter(protein == "pho4") %>% select(flank, scaled_dG))
 
 # P2: induction plot
-p2 = ggplot(expVal,aes(induction,ddG)) +
+p2 = ggplot(expVal,aes(scaled_dG, induction)) +
   presentation +
-  geom_errorbar(aes(x = induction, ymax = ddG + ddG.sd, ymin = ddG - ddG.sd), size = 0.2) +
   geom_point(size = 0.01) +
   theme(aspect.ratio = 1) +
-  coord_flip() +
-  xlab("Induction, fold change") +
-  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
+  ylab("Induction, fold change") +
+  xlab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
 
-S15 = cowplot::plot_grid(p1,p2,nrow=1,scale = c(1,0.96))
+S15 = cowplot::plot_grid(p1,p2,nrow=1,scale = c(1,1))
 
 ggsave("~/Flanks/Images/S15.png", plot = S15, height = 5, width = 8, units = "cm")
 ```
@@ -1050,137 +1113,25 @@ overlayDf2 %>% group_by(protein) %>%  summarise(avg = sum(cc*sites)/sum(sites))
 
 #### Un-indexed
 
-## Panel C: Selected binding curves
 ```{r}
-pho4Curves = 
-  fread("~/Flank_seq/data/pho4BindingCurves.csv", sep = ",", header = T) %>%
-  tbl_df() %>%
-  rename(ID = Onum, fBound = R, Conc = Ch) %>%
-  mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
-  createCurves(.) %>%
-  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("~/Flank_seq/data/seq2ID_pho4.txt", header = F) %>%
-    unite("flank",V3,V5,sep="_") %>%
-    select(index = V1, flank) %>%
-    mutate(index = paste("ID",index,sep=""))) %>%
-  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
-  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()),
-         estimate = percent_rank(estimate))
-
-estSpread = pho4Curves %>% arrange(estimate) %>% .$estimate %>% unique()
-
-#plot
-colPal = brewer.pal(9,"Set1")
-p1 = ggplot(pho4Curves %>% filter(estimate == estSpread[32]|estimate == estSpread[31]|estimate == estSpread[20]|estimate == estSpread[10]|estimate == estSpread[1])) +
-  geom_point(aes(Conc,fBound,color=flank), size = 0.25) +
-  geom_line(aes(Conc,.fitted,color=flank), size = 0.25) +
-  presentation +
-  theme(aspect.ratio = 1, 
-        axis.text.x = element_text(angle = 45, vjust = 0.5),
-        legend.key.size = unit(0.3,"cm")) +
-  ylab("Ratio DNA/protein") +
-  xlab("Substrate concentration, nM") +
-  xlim(c(0,100)) +
-  scale_color_manual("", values = colPal)
-
-ggsave("~/Flanks/Images/f3pC.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
-```
-
-# Histogram of NN-scaled data vs raw data
-```{r}
-ggplot(countsNN_scaled %>% 
-         mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
-                protein = factor(protein,
-                                levels = c("Pho4", "Cbf1")))) + 
-  presentation +
-  theme(aspect.ratio = 1) +
-  geom_histogram(aes(NN_ddG)) +
-  facet_grid(. ~ protein) +
-  xlab(expression(bold(paste("Neural network predicted ", Delta, Delta, "G, kcal/mol")))) +
-  ylab("Count")
-
-ggplot(counts.df %>% 
-         mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
-                protein = factor(protein,
-                                levels = c("Pho4", "Cbf1")),
-                rep = paste0("rep #",rep))) + 
-  presentation +
-  theme(aspect.ratio = 1) +
-  geom_histogram(aes(ddG)) +
-  facet_grid(protein ~ rep) +
-  xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol")))) +
-  ylab("Count")
-```
-
-# Per-sequence linear regression
-```{r}
-longCounts = 
-  counts.df %>% 
+# vs titration
+std_kd %>% 
   mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
-  unite("newcol", protein, rep) %>% 
-  select(flank, ddG, newcol) %>% 
-  spread(newcol,ddG)
-
-cor(longCounts %>% select(-flank) %>% as.matrix(), use = "complete.obs")^2 %>% 
-  as.data.frame.matrix() %>% 
-  mutate(Var1 = rownames(.)) %>% 
-  gather(Var2,r,-Var1) %>% 
-  mutate(Var1 = sub("_"," #",Var1),
-         Var2 = sub("_"," #",Var2)) %>% 
+  select(X01:X10, protein, stdE, stdE.err) %>% 
+  left_join(.,model_outputs %>% 
   tbl_df() %>% 
-  distinct() %>% 
-  mutate(pass = ifelse(as.integer(substr(Var1,nchar(Var1),nchar(Var1))) < as.integer(substr(Var2,nchar(Var2),nchar(Var2))) & substring(Var1,1,4) == substring(Var2,1,4),1,0),
-         Var1 = factor(Var1, levels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))),
-         Var2 = factor(Var2, levels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #")))) %>% 
-  filter(pass == 1) %>% 
-  select(-pass) %>% 
-  arrange(Var1,Var2) %>% 
-  xtable(digits =3) %>% 
-  print() 
-
+  select(X01:X10, .fitted, protein, model)) %>%
+  mutate(model = factor(model, labels = c(expression(bold(paste("Mononucleotide"))),
+                                          expression(bold(paste("Nearest neighbor"))),
+                                          expression(bold(paste("Dinucleotide"))))),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1"),
+                          labels = c(expression(bold(paste("Pho4"))),
+                                     expression(bold(paste("Cbf1")))))) %>% 
+  group_by(model,protein) %>% 
+  summarise(r2 = cor(stdE, .fitted)^2) %>% 
+  xtable() %>% 
+  print()
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Neural network training curves
-
-```{r}
-library(data.table)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-
-cbf1_training <- read.table("~/Flank_seq/data/cbf1_model.acc", header = TRUE) %>% 
-  gather(dataset, RMSE, -epoch) %>% 
-  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
-         protein = "Cbf1")
-
-pho4_training <- read.table("~/Flank_seq/data/pho4_model.acc", header = TRUE) %>% 
-  gather(dataset, RMSE, -epoch) %>% 
-  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
-         protein = "Pho4")
-
-training_data <- bind_rows(cbf1_training, pho4_training) %>% 
-  mutate(protein = factor(protein, levels = c("Pho4", "Cbf1")))
-
-ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
-  facet_grid(protein~., scales = "free_y") +
-  geom_line() + 
-  presentation +
-  scale_color_manual(values = c("red", "blue"))
-
-ggsave("~/Flanks/Images/SX.svg", height = 5, width = 5)
-```
 
