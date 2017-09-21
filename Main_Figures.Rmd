@@ -772,11 +772,11 @@ write.table(model_outputs, "~/model_outputs.txt", row.names = FALSE, col.names =
 ## Read in the preprocessed data
 ```{r}
 # Read in model output data and put into simple model form
-model_outputs <- fread("~/model_outputs.txt")
+model_outputs <- fread("~/Google Drive/Flanks_data/model_outputs.txt")
 
 simple_model_data <- model_outputs %>% 
   ungroup() %>% 
-  unite(flank, X01:X10, sep = "") %>%
+  # unite(flank, X01:X10, sep = "") %>%
   rename(ddG = scaled_ddG) %>% 
   select(flank, ddG, .fitted, model, dataset) %>% 
   mutate(model = ifelse(model == "mono-nucleotide",
@@ -789,6 +789,8 @@ simple_model_data <- model_outputs %>%
 
 ## Mononucleotide models 
 ```{r}
+library(latex2exp)
+
 ggplot(simple_model_data %>% filter(model == "mononucleotide"), aes(x = .fitted, y = ddG)) +
   geom_hex(bins = 50) +
   scale_fill_gradient2(name = "Count", trans = "log",
@@ -824,7 +826,134 @@ ggsave("~/Flanks/Images/f4pX.svg", width = 10, height = 6,
 ```
 
 
+```{r}
+# Total r^2
+simple_model_data %>%
+  group_by(model, dataset) %>%
+  summarize(r2 = cor(ddG, .fitted)^2)
 
+# Held-out r^2
+training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>% 
+  rename(flank = V1)
+
+simple_model_data %>%
+  anti_join(., training_data) %>% 
+  group_by(model, dataset) %>%
+  summarize(r2 = cor(ddG, .fitted)^2)
+```
+
+
+# B2 Bomber Plot
+
+```{r}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(broom)
+
+# Read in the count data from our experiments
+data <- fread("~/Google Drive/Flanks_data/scaled_nn_preds.txt") %>% 
+  separate(flank, into = paste0("X", sprintf("%02d", 1:10)), sep = 1:9, remove = FALSE)
+
+# Define the function to get the mean residual multiplied by the scalar
+get_effect <- function(col1, col2, data) {
+  colnames(data)[which(colnames(data) == col1)] <- "nt1"
+  colnames(data)[which(colnames(data) == col2)] <- "nt2"
+
+  output <- data %>%
+    group_by(nt1, nt2) %>%
+    summarize(ddG = mean(.resid)) %>%
+    mutate(pos1 = col1, pos2 = col2)
+
+  return(output)
+}
+
+get_mean_effects <- function(data) {
+  colnames <- colnames(data)[1:10]
+  combos <- expand.grid(pos1 = colnames, pos2 = colnames) %>% 
+    mutate(num1 = as.numeric(gsub("X", "", pos1)),
+           num2 = as.numeric(gsub("X", "", pos2))) %>% 
+    filter(num1 < num2) %>% 
+    select(pos1, pos2)
+  
+  output <- combos %>%
+    group_by(pos1, pos2) %>%
+    do(get_effect(.$pos1[1], .$pos2[1], data))
+}
+
+# Make a function to plot the mean dinuc residual and save to a file
+make_plot <- function(data, data_string, kd_data){
+  
+  # Handle the presentation style
+  presentation <-  theme_bw() + 
+    theme(plot.title = element_text(hjust = 0.5,
+                                    family = "Arial",
+                                    face = "bold",
+                                    size = 24),
+          axis.title = element_text(family = "Arial",
+                                    face = "bold",
+                                    size = 18),
+          axis.text = element_text(family = "Arial",
+                                   face = "bold",
+                                   size = 14),
+          strip.text = element_text(family = "Arial",
+                                    face = "bold",
+                                    size = 12),
+          legend.title = element_text(family = "Arial",
+                                      face = "bold",
+                                      size = 14),
+          legend.text = element_text(family = "Arial",
+                                     face = "bold",
+                                     size = 12))
+  
+  # Subset the data to the protein of interest
+  new_data <- data %>%
+    filter(protein == data_string) %>% 
+    select(X01:X10, scaled_ddG)
+  
+  # Make the linear model
+  model <- lm(scaled_ddG ~ ., data = new_data)
+  
+  # Extract the fitted and resid values
+  model_results <- augment(model) %>% 
+    select(X01:X10, .resid, .fitted)
+  
+  # Titration comparison
+  plot_data <- get_mean_effects(model_results) %>% 
+    ungroup() %>% 
+    mutate(pos1 = as.numeric(gsub("X", "", pos1)) - 6,
+           pos2 = as.numeric(gsub("X", "", pos2)) - 6) %>% 
+    mutate(pos1 = pos1 + (pos1 >= 0),
+           pos2 = pos2 + (pos2 >= 0))
+  
+  plot1 <- ggplot(plot_data) +
+    facet_grid(pos2~pos1, space = "free") +
+    geom_tile(aes(nt1, nt2, fill=ddG)) +
+    presentation +
+    theme(aspect.ratio = 1) +
+    # scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white") +
+    scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white", limits = c(-0.51, 0.51)) +
+    theme(axis.text.y = element_text(angle = 270, color = "black", hjust = 0.5),
+          axis.text.x = element_text(angle = 0, color = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_rect(size = 2)) +
+    xlab("") +
+    ylab("")
+  
+  return(plot1)
+  
+  ggsave(paste0("~/Flank_seq/Figures/Final_Figures/Figure_4/", data_string, "_dinuc_mean_ddg.svg"),
+         height = 10, width = 10, units = "in")
+  
+}
+
+make_plot(data, "Pho4", std_kd)
+test <- make_plot(data, "Cbf1", std_kd)
+
+test
+```
 
 
 

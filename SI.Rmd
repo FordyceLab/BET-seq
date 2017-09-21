@@ -1181,6 +1181,8 @@ ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
   presentation +
   scale_color_manual(values = c("red", "blue"))
 
+ggsave("~/Downloads/training_curves.eps", height = 5, width = 5)
+
 ggsave("~/Flanks/Images/SX.svg", height = 5, width = 5)
 ```
 
