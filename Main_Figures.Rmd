@@ -62,7 +62,7 @@ p1 = ggplot(shockDf) +
   geom_point(aes(t,cc,color=ddG)) +
   coord_polar(start = -pi/2) +
   ylim(c(0,10)) +
-  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
+  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "gray90") +
   theme(aspect.ratio = 1, 
         axis.title = element_blank(),
         axis.text = element_blank(),
@@ -770,6 +770,43 @@ ggsave("~/Flanks/Images/f4pD.svg", plot = F4D, height = 5, width = 17, units = "
 
 # Figure 5:
 ## Panel A: ChIP scatter
+```{r}
+scaledNN = 
+  countsNN_scaled %>% 
+  select(flank, protein, scaled_dG, scaled_ddG) %>% 
+  mutate(kd = exp(scaled_dG/0.593)*1E9,
+         kd = round(kd,0))
+
+chip.data = 
+  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
+  filter(Alignability == 1) %>%
+  select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
+
+chipDat =
+  inner_join(chip.gen.full %>% gather(protein,occ,pho4,cbf1), scaledNN) %>%
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, levels = c("Pho4","Cbf1")))
+
+F5A = ggplot(chipDat, aes(kd, occ)) +
+  presentation +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.2,"cm"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_point(aes(color = scaled_ddG), size = 0.01) +
+  ylab("ChIP Enrichment") +
+  xlab(expression(bold(paste("Sequencing K"[d], ", nM")))) +
+  facet_grid(. ~ protein) +
+  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))), 
+                        low = "#0057E7", 
+                        high = "#D62D20", 
+                        mid = "gray90", 
+                        midpoint = 0,
+                        limit = c(min(scaledNN$scaled_ddG),max(scaledNN$scaled_ddG))) +
+  scale_x_log10()
+
+ggsave("~/Flanks/Images/F5A.png", plot = F5A, height = 5, width = 8, units = "cm")
+```
+
 ## Panel B: ChiP overlay
 ```{r}
 shockDf = 
@@ -777,88 +814,39 @@ shockDf =
             fread(paste0("~/Google\ Drive/Flanks_data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df()
 
-# join NN results with titration data
-nnCor = 
-  left_join(std_kd %>% select(flank,stdE,protein), shockDf %>% select(flank,ddG,cc,t,protein))
-
-# lm to extract linear equation
-slopeDf = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
-  iSlice = nnCor %>% filter(protein == i)
-  mod = lm(stdE ~ ddG, iSlice)
-  tidy(mod) %>% 
-    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
-    select(term,estimate) %>%
-    spread(term,estimate) %>%
-    mutate(protein = i)
-}
-
-nnfitCor = 
-  left_join(shockDf,slopeDf) %>%
-  mutate(ddG = (ddG*slope)) %>% #only scale, no offset
-  select(-int,-slope) %>%
-  group_by(cc) %>% 
-  mutate(meanval = mean(ddG)) %>%
-  ungroup()
-
 overlayDf = 
-  left_join(nnfitCor %>% select(flank,ddG,t,cc,protein),chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
+  left_join(shockDf,chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
   group_by(protein) %>% 
   mutate(relOcc = occ/max(occ, na.rm = T)) %>% 
   ungroup()
 
-# circle plot (no ChIP)
-p1 = ggplot(overlayDf) +
-  geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  coord_polar() +
-  scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
-  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
-  theme(aspect.ratio = 1, 
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        axis.line = element_blank(),
-        axis.ticks = element_blank(),
-        legend.position = "none") +
-  facet_wrap(~ protein, nrow = 1)
-
-ggsave("~/Flanks/Images/f5pC1.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
-
 # circle plot (only ChIP)
-p1 = ggplot(overlayDf) +
+f5pB = ggplot(overlayDf) +
   theme_bw() +
   geom_point(aes(t,cc,size=relOcc,color=ddG)) +
   coord_polar() +
-  scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
-  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
+  scale_size_continuous(expression(bold("ChIP enrichment")), range = c(0.01, 2.5)) +
+  scale_color_gradient2(expression(bold(paste(Delta,,Delta,"G, kcal/mol"))),
+                        low = "#0057E7", 
+                        high = "#D62D20", 
+                        mid = "gray90", 
+                        midpoint = 0,
+                        breaks = -2:1) +
   theme(aspect.ratio = 1, 
         axis.title = element_blank(),
         axis.text = element_blank(),
         axis.line = element_blank(),
         axis.ticks = element_blank(),
-        legend.position = "none",
         panel.border = element_blank(),
         panel.grid.minor.x = element_blank(),
         panel.grid.major.x = element_blank(),
-        panel.grid.major.y = element_line(size = 0.1, color = "gray40")) +
+        panel.grid.major.y = element_line(size = 0.1, color = "gray40"),
+        legend.key.size = unit(0.3,"cm")) +
   scale_y_continuous(breaks = 0:10) +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("~/Flanks/Images/f5pC2.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
+ggsave("~/Flanks/Images/f5pB.png", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600)
 
-# legend print
-pLeg = ggplot(overlayDf) +
-  geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  geom_point(aes(t,cc,size=relOcc,color=ddG)) +
-  coord_polar() +
-  scale_size_continuous(expression(bold("Relative ChIP\nenrichment")), range = c(0.01, 2.5)) +
-  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))),low = "#0057E7", high = "#D62D20", mid = "white") +
-  theme(aspect.ratio = 1,
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        axis.line = element_blank(),
-        axis.ticks = element_blank()) +
-  facet_wrap(~ protein, nrow = 1)
-
-ggsave("~/Flanks/Images/f5pCleg.png", plot = pLeg, height = 12, width = 12, units = "cm", dpi = 600)
 ```

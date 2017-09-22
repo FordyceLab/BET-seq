@@ -6,6 +6,225 @@ output: html_document
 ---
 
 
+#### Un-indexed
+
+```{r}
+# vs titration
+std_kd %>% 
+  mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+  select(X01:X10, protein, stdE, stdE.err) %>% 
+  left_join(.,model_outputs %>% 
+  tbl_df() %>% 
+  select(X01:X10, .fitted, protein, model)) %>%
+  mutate(model = factor(model, labels = c(expression(bold(paste("Mononucleotide"))),
+                                          expression(bold(paste("Nearest neighbor"))),
+                                          expression(bold(paste("Dinucleotide"))))),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1"),
+                          labels = c(expression(bold(paste("Pho4"))),
+                                     expression(bold(paste("Cbf1")))))) %>% 
+  group_by(model,protein) %>% 
+  summarise(r2 = cor(stdE, .fitted)^2) %>% 
+  xtable() %>% 
+  print()
+```
+
+
+
+## Figure S6: Raw vs. titration correlation
+```{r}
+crossallDat = 
+  counts.df %>% 
+  select(protein, flank, ddG) %>%
+  left_join(std_kd %>% select(flank, stdE, stdE.err),.) %>% 
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1")))
+
+# plot
+S6 = ggplot(crossallDat, aes(stdE,ddG)) +
+  presentation +
+  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err), size = 0.25) +
+  geom_point(size = 0.01) +
+  theme(aspect.ratio = 1) +
+  ylab(expression(bold(paste("Unprocessed ", Delta, Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  facet_grid(protein ~ .)
+
+ggsave("~/Flanks/Images/S6.png", plot = S6, height = 7, width = 7, units = "cm")
+```
+
+## Figure S8: Dinucleotides vs titration correlation
+```{r,fig.height=10, fig.width=10}
+predCor = 
+  model_outputs %>% 
+  tbl_df() %>% 
+  select(X01:X10, .fitted, protein, model)
+
+plotOut = 
+  std_kd %>% 
+  mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")) %>% 
+  select(X01:X10, protein, stdE, stdE.err) %>% 
+  left_join(.,predCor)
+
+scaleDat = 
+  plotOut %>%
+  mutate(model = factor(model, labels = c(expression(bold(paste("Mononucleotide"))),
+                                          expression(bold(paste("Nearest neighbor"))),
+                                          expression(bold(paste("Dinucleotide"))))),
+         protein = factor(protein, 
+                          levels = c("Pho4","Cbf1"),
+                          labels = c(expression(bold(paste("Pho4"))),
+                                     expression(bold(paste("Cbf1"))))))
+
+# plot
+S8 = ggplot(scaleDat, aes(stdE,.fitted)) +
+  presentation +
+  geom_errorbarh(aes(x = stdE, xmin = stdE + stdE.err, xmax = stdE - stdE.err), size = 0.25) +
+  geom_point(size = 0.01) +
+  theme(aspect.ratio = 1) +
+  facet_grid(protein ~ model, scales = "free", labeller = "label_parsed") +
+  ylab(expression(bold(paste("Linear model ", Delta,Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol"))))
+
+ggsave("~/Flanks/Images/S8.png", plot = S8, height = 8, width = 8, units = "cm")
+
+
+# correlation of linear model predictions vs titration
+plotOut %>% 
+  group_by(model,protein) %>% 
+  summarise(r2 = cor(stdE, .fitted)^2) %>% 
+  xtable() %>% 
+  print()
+
+# correlation of linear model preditions vs NN-derived ddG
+corOut = 
+  left_join(predCor %>% unite("flank",X01:X10,sep="") %>% select(flank,.fitted,protein,model), countsNN_scaled %>% select(flank,scaled_ddG,protein) %>% mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1")))
+
+corOut %>% 
+  group_by(protein, model) %>% 
+  summarise(r2 = cor(.fitted,scaled_ddG)^2) %>%
+  xtable() %>% 
+  print()
+  
+```
+
+
+
+
+
+## Figure S12: Epistasis Pho4 titration binding curves
+```{r}
+colPal = colorRampPalette(c("#0057E7", "#D62D20"))(32)
+
+pho4EpiCurves = 
+  fread("~/Flank_seq/data/pho4EpistasisCurves.csv", sep = ",", header = T) %>%
+  tbl_df() %>%
+  rename(ID = Onum, fBound = R, Conc = Ch) %>%
+  mutate(index = paste("ID",ID,sep=""), 
+         index = factor(index, paste0("ID",1:32))) %>%
+  createCurves(.) %>%
+  mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
+  left_join(.,fread("~/Flank_seq/data/epi2ID_pho4.txt", header = F) %>%
+    unite("flank",V2,V4,sep="_") %>%
+    mutate(index = paste0("ID",1:32)) %>%
+    select(index, flank)) %>%
+  mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
+  mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique())) %>%
+  filter(index != "ID10") # remove replicate
+
+S12 = ggplot(pho4EpiCurves) +
+  geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
+  geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
+  presentation +
+  theme(aspect.ratio = 1, 
+        legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5),
+        panel.spacing = unit(0.2, "lines")) +
+  ylab("Intensity ratio (DNA/protein)") +
+  xlab("DNA concentration, nM") + 
+  facet_wrap( ~ flank, nrow=6) +
+  scale_color_manual(values = colPal)
+
+ggsave("~/Flanks/Images/S12.png", plot = S12, height = 17, width = 13, units = "cm")
+```
+
+## Figure S13: Pho4 dinucleotide LASSO benchmark
+```{r}
+dfVar = fread("~/Flank_seq/data/dfVar_pho4.txt", header =T)
+
+# sum of additive features
+stdEpi =
+  fread("~/Flank_seq/data/stdEpistasis1.csv", header = T) %>%
+  tbl_df() %>%
+  mutate(Sequence = gsub(" ","",Sequence)) %>% # remove white space
+  mutate(Sequence = substring(Sequence,16,31), Sequence = gsub("CACGTG","",Sequence)) %>% # isolate flanks
+  select(flank = Sequence, estimate, std.error) %>%
+  mutate(kd = estimate/1E9,
+         stdE.err = (std.error/estimate)*0.593,
+         stdE = log(kd) * 0.593,
+         target = flank) %>%  
+  inner_join(.,dfVar) %>%
+  group_by(flank) %>%
+  mutate(addVals = diMean(flank,dfVar)) %>%
+  ungroup() %>%
+  mutate(addVals = addVals/max(addVals),
+         diVals = addVals + coef) # normalize
+
+# benchmark plot
+lm(stdE~addVals,stdEpi) %>% glance() # mononucleotide 
+lm(stdE~diVals,stdEpi) %>% glance() # dinucleotide 
+
+S13 = ggplot(stdEpi, aes(stdE,addVals)) + 
+  presentation + 
+  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE -stdE.err,color = abs(coef)), size = 0.25) +
+  geom_point(aes(color = abs(coef)), size = 0.01) +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.2,"cm")) +
+  ylab("Relative sum of LASSO\nmononucleotide coefficients") +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  scale_color_gradient("LASSO dinucleotide\ncoefficient magnitude",high = "red", low = "black")
+
+ggsave("~/Flanks/Images/S13.png", plot = S13, height = 4, width = 10, units = "cm")
+```
+
+## Figure S14: NNet model(ensemble) vs. Pho4 titration data
+```{r}
+# join NN results with titration data
+nnCor = 
+  left_join(std_kd %>% select(flank,stdE,stdE.err,protein), countsNN.df%>% select(flank,ddG,protein))
+
+# lm to extract linear equation
+slopeDf = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
+  iSlice = nnCor %>% filter(protein == i)
+  mod = lm(stdE ~ ddG, iSlice)
+  tidy(mod) %>% 
+    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
+    select(term,estimate) %>%
+    spread(term,estimate) %>%
+    mutate(protein = i)
+}
+
+nnfitCor = 
+  left_join(nnCor,slopeDf) %>%
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"), 
+         protein = factor(protein, levels = c("Pho4","Cbf1")),
+         ddG = (ddG*slope) + int) %>%
+  na.omit()
+
+S14 = ggplot(nnfitCor,aes(stdE,ddG)) +
+  presentation +
+  geom_errorbarh(aes(x = stdE, xmax = stdE + stdE.err, xmin = stdE - stdE.err), size = 0.2) +
+  geom_point(size = 0.01) +
+  theme(aspect.ratio = 1) +
+  ylab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol")))) +
+  xlab(expression(bold(paste("Titration ", Delta, "G, kcal/mol")))) +
+  facet_grid(. ~ protein, scales = "free")
+
+ggsave("~/Flanks/Images/S14.png", plot = S14, height = 4, width = 6, units = "cm")
+```
+
+
 ##Table S8: titration binding sequences
 ```{r}
 fread("~/Flank_seq/data/titrationseq_di.txt", header = F) %>% 
