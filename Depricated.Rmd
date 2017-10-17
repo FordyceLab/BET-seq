@@ -6,6 +6,43 @@ output: html_document
 ---
 
 
+## Table S4: Correlation to titration results
+```{r}
+crossallDat %>% 
+  group_by(protein, key) %>% 
+  summarise(r2 = cor(stdE,value)^2) %>% 
+  ungroup() %>% 
+  mutate(protein = c(rep("Pho4",2),rep("Cbf1",2)),
+         key = c("in","mod","in","mod")) %>% 
+  xtable(digits = 3) %>% 
+  print()
+```
+
+## Table S5: dinucleotide correlation results
+```{r}
+scaleDat %>% 
+  distinct() %>% 
+  group_by(protein, model) %>% 
+  summarise(r2 = cor(.fitted,stdE)^2) %>% 
+  ungroup() %>% 
+  mutate(protein = c(rep("Pho4",3),rep("Cbf1",3)),
+         model = rep(c("Mononucleotide","Nearest neighbor","Dinucleotide"),2),
+         r2 = round(r2, digits = 3)) %>% 
+  xtable(digits = 3) %>% 
+  print()
+```
+
+##Table S7: titration binding sequences
+```{r}
+fread("~/Flank_seq/data/titrationseq_mono.txt", header = F) %>% 
+  rename(Index = V1, Sequence = V2) %>% 
+  mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
+         Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
+  select(Sequence) %>% 
+  xtable() %>% 
+  print()
+```
+
 #### Un-indexed
 
 ```{r}

@@ -21,28 +21,29 @@ library(dplyr)
 # Global aesthetics
 presentation <-  theme_bw() +
   theme(plot.title = element_text(hjust = 0.5,
-                                  family = "Arial",
+                                  #family = "Arial",
                                   face = "bold",
                                   size = 12),
-        axis.title = element_text(family = "Arial",
+        axis.title = element_text(#family = "Arial",
                                   face = "bold",
                                   size = 6),
-        axis.text = element_text(family = "Arial",
+        axis.text = element_text(#family = "Arial",
                                  face = "bold",
                                  size = 6),
-        legend.text = element_text(family = "Arial",
+        legend.text = element_text(#family = "Arial",
                                    face = "bold",
                                    size = 6),
-        legend.title = element_text(family = "Arial",
+        legend.title = element_text(#family = "Arial",
                                     face = "bold",
                                     size = 6),
-        strip.text = element_text(family = "Arial",
+        strip.text = element_text(#family = "Arial",
                                   face = "bold",
                                   size = 6),
         strip.text.x = element_text(vjust = 0))
 
 # Functions
 
+# Return the reverse complement of a DNA sequence
 revcomp = function(string) {
   # Input: string = character string of DNA
   # Output: character string of reverse complement DNA
@@ -52,6 +53,8 @@ revcomp = function(string) {
   return(returnString)
 }
 
+# Create an additive motif dataframe. This function takes the mean of a the specified variable
+# and appends data that specifies position and nuceotide identity
 addMotif = function(df, var) {
   # Input: df = dataframe of ddG values with accompanying experimental parameters; 
   # var = character string identifying column name of ddG values;
@@ -70,6 +73,7 @@ addMotif = function(df, var) {
     left_join(.,monuc.flank,by="monuc.key")
 }
 
+# Performs global Rmax langmuir binding curves
 createCurves = function(df) {
   # Input: df = dataframe for raw binding curve measurements
   # Output: dataframe of fitted curve values
@@ -107,21 +111,28 @@ createCurves = function(df) {
   return(pho4Fit)
 }
 
+# For a desired maximum k-mer size, this function retruns all possible combinations of positions and identites
 createTerms = function(termLim) {
   # Input: termLim = integer value for number of flanking positions interacting
   # Output: dataframe of linear regression terms
   foreach(i = 1:termLim, .combine = "rbind")%do%{
+    
+    # create all combinations of position variables (in future, use combinations from gtools package)
     Vars =
       expand.grid(rep(list(1:10),i)) %>%
       tbl_df() %>%
       filter_(.dots = if(i > 1) {paste0("Var",2:i,">Var",1:(i-1))}) # remove redundancy
     
+    # Determine nearest neighbor groups
     if(i > 1) {nnVars = Vars %>% 
       filter_(.dots = paste0("Var",2:i,"-Var",1:(i-1),"==1")) %>% 
       filter_(.dots = paste0("Var1 != ", (7-i):5)) }else{
-      nnVars = NA} # create nearest neighbor groups
+      nnVars = NA} 
     
-    termsList = list(Vars, nnVars) # combine variable dataframes
+    # combine variable sets into list
+    termsList = list(Vars, nnVars)
+    
+    # create dataframe that organizes all variables
     termVars = foreach(j = if(!is.data.frame(nnVars)){1}else{1:2}, .combine = "rbind")%do%{ # iterate through each dataframe
       varRows = termsList[[j]] 
       foreach(k = 1:nrow(varRows), .combine = "rbind")%do%{ # create variables from rows
@@ -138,23 +149,35 @@ createTerms = function(termLim) {
   }
 }
 
+# Using model variable terms from the createTerms() function, and specified training and test
+# datasets, this function parses the model terms, performs the regression and outputs predictions
 createPred = function(termDf, inputDf, testDf) {
-  # Input: termDf = dataframe of flanking positions interacting; 
+  # Input: termDf = dataframe of model variable terms; 
   # fileName = character string specifying output file name
   # inputDf = dataframe of binding data (filter on single protein)
   # testDf = dataframe of titration data
   # Output: list of dataframes containing fitted values vs empirical
   
-  termGroups = distinct(termDf,terms,nearN) # define model classes
+  # return dataframe with unique variables for linear regression
+  termGroups = distinct(termDf,terms,nearN)
+  
+  # assign provided training and test datasets
   trainSet = inputDf
   testSet = testDf
   
+  # perform linear regression and output dataframe of results
   tmp = foreach(i = 1:nrow(termGroups), .combine = "rbind")%do%{ # iterate through classes
     
+    # assign terms to be implemented
     termClass = termGroups %>% slice(i)
+    
+    # create name for output
     modelName = paste0(ifelse(termClass$nearN == 1,"Nearest-",""),termClass$terms,"-nuc")
+    
+    # run model with assigned terms
     mod = lm(formula(paste("ddG ~ ", paste0(left_join(termClass,termDf) %>% .$Var, collapse = "+"), sep = "")), data = trainSet) # linear regression
     
+    # create dataframe of results using test subset
     data.frame(.fitted = predict.lm(mod, newdata = testSet)) %>% 
       mutate(model = modelName) %>%
       bind_cols(.,testSet %>% select(flank,estimate,std.error,stdE))
@@ -162,54 +185,74 @@ createPred = function(termDf, inputDf, testDf) {
   return(tmp)
 }
 
+# This function defines the model contrasts lor linear regression. Specifically, contrasts were turned off.
 contr.Dummy <- function(contrasts, ...){
   # Summary: sets options for categorical regression to eliminate the intercept term for simpler interpretation
   # Inputs: constrasts = contrasts objects originating within a model object
   # Outputs: contrasts options set to eliminate intercept term
   
+  # set contrast option
   conT <- contr.treatment(contrasts=FALSE, ...)
   conT
   }
 
+# Concatenate model variables
 addVar = function(listDf, charFlank, intVal) {
   # Inputs: listDf = list of position df's from global env.
   # charFlank = chr string of flank sequence
   # intVal = int specifying max number of positions
   # Output: chr string of concatanated variables
+  
+  # iterate from 1-mer to k-mer
   sapply(1:intVal, function (y) {
-    dfPos = listDf[[y]] 
+    dfPos = listDf[[y]]
     
+    # separate bases in flank sequence
     string = strsplit(charFlank,"")[[1]]
-    
-    dfPos  %>% 
+
+    dfPos  %>%
       mutate_each(funs(sapply(., function(x) string[x])), everything()) %>% # extract bases at each position
-      unite(var,everything(),sep="") %>%
+      unite(var,everything(),sep="") %>% # combine bases into k-mers
       .$var %>%
-      paste0(.,collapse=".")
+      paste0(.,collapse=".") # concatenate k-mers, separated by "."
     }) %>% paste0(.,collapse=".")
   }
 
+# From a model variable, convert to flanking sequence
 convertFlank = function(charTerm, intRow, listDf) {
   # Inputs: charTerm = chr string of bases in a term
   # intRow = int specifying row in listDf
   # listDf = list of df's from global env that contain interacting positions in flank
   # Output: chr string of full flank
+  
+  # random background
   returnString = "NNNNNNNNNN"
+  
+  # assign k-mer size
   intVal = nchar(charTerm)
-  dict = data.frame(row = 1:sum(sapply(1:intVal, function(x) choose(10,x))), 
+  
+  # create dictionary of that indexes the model variable base identities relative to positions in listDf
+  dict = data.frame(row = 1:sum(sapply(1:intVal, function(x) choose(10,x))),
                     listIndex = rep(1:intVal, sapply(1:intVal, function(x) choose(10,x))),
                     withinRow = sapply(1:intVal, function(x) 1:choose(10,x)) %>% unlist())
+  
+  # filter based row specifying position
   dictIndex = dict %>% filter(row == intRow)
-  lettPos = listDf[[dictIndex$listIndex]] %>% 
-    slice(dictIndex$withinRow) %>% 
-    unlist() %>% 
+  
+  # returns vector of positions
+  lettPos = listDf[[dictIndex$listIndex]] %>%
+    slice(dictIndex$withinRow) %>%
+    unlist() %>%
     as.vector()
+  
+  # use position indices to reassign base identities
   foreach(i = 1:dictIndex$listIndex)%do%{
     substring(returnString,lettPos[i],lettPos[i]) <- substring(charTerm,i,i)
   }
   return(returnString)
 }
 
+# creates all paired crosses of provided terms
 makePairs <- function(data, term) {
   # Inputs: data = dataframe of all col to cross pair + terms col
   # Output: dataframe that contains cross pairs
@@ -228,6 +271,7 @@ makePairs <- function(data, term) {
   return(tbl_df(all) %>% mutate(term = rep(termVec, length=nrow(.))))
 }
 
+# Creates model terms for a sequence given a interaction class
 encodeTerms = function(df, bsize, classVal, posDf) {
   # Inputs: df = dataframe of flank and ddG
   # bsize = int specifying batch size
@@ -252,7 +296,163 @@ encodeTerms = function(df, bsize, classVal, posDf) {
   }
 }
 
-### DMC Functions
+# function to remove nearest-neighbor variables
+findSplitNN = function(seqStr) {
+  # Input: Character string of concatenated base and position variable string
+  # Output: Dataframe of base and position 
+  
+  reStr = gregexpr("[ACGT]", seqStr)
+  varStr = paste0("Var", reStr %>% unlist())
+  if (varStr[1] == "Var5" & varStr[2] == "Var6") {F} else {T}
+}
+
+# expands a sequence with all possible 1 hamming distance sequence variants
+hdset = function(lettDf) {
+  # input: lettDf = df of character letter {A,C,G,T} in each column
+  # output: 3-row df of 1-HD sets
+  lettSet = c("A","C","G","T")
+  foreach(i = paste0("X",sprintf("%02d",1:10)), .combine = "rbind")%do%{
+    colLett = lettDf[,i] %>% unlist(use.names = F)
+    hdVal = lettSet[!(lettSet %in% colLett)]
+    hdvalDf = data.frame(V1 = hdVal)
+    colnames(hdvalDf) <- i
+    returnDf = left_join(hdvalDf %>% mutate(cross = 1), lettDf %>% select_(paste0("-",i)) %>% mutate(cross = 1), by = "cross") %>% select(-cross)
+    return(returnDf %>% tbl_df())
+  }
+}
+
+# Determines the hamming distances for a vector of sequences relative to a single reference
+hdset2 = function(flankSeq,refSeq) {
+  # input: flankSeq = vector of flank sequence; refSeq = reference
+  # output: vector of hd
+  foreach(i = flankSeq, .combine = "c")%do%{
+    separatedFlank = i %>% strsplit(.,"") %>% unlist()
+    separatedRef = refSeq %>% strsplit(.,"") %>% unlist()
+    sum(separatedFlank != separatedRef)
+  }
+}
+
+# Determines the sets of hamming distance cohorts for a given dataset
+recurhd2 = function(refDf, rLevel) {
+  # input: refDf = df of assay data that must include flank, X01:X10 and ddG
+  # rLevel = int specifying the recursion level
+  
+  ## determine highest affinity sequence
+  bestSlice = refDf %>% filter(ddG == min(ddG))
+  
+  ## create df to return
+  hdDf = bestSlice %>% mutate(cc = 0)
+  
+  ## trimmed refDf
+  trimDf = refDf[!(refDf$flank %in% bestSlice$flank),] # remove repeats across levels
+  
+  if (nrow(hdDf) < nrow(refDf)) { # add early stopping
+    foreach(j = 1:rLevel)%do%{ # j level in concentric circles
+      print(paste0("level = ",j))
+      jSlice = hdDf %>% filter(cc == (j-1)) # extract sequences from previous level
+      
+      preDf = foreach(k = 1:nrow(jSlice), .combine = "rbind")%dopar%{ # k = number of elements in previous concentric circle
+        kSlice = jSlice %>% slice(k) %>% select(X01:X10)
+        returnDf = 
+          hdset(kSlice) %>%
+          unite(flank, X01:X10, sep = "")
+      } %>% 
+        distinct() %>% # remove repeats in a single level
+        inner_join(.,trimDf) %>%
+        mutate(cc = j)
+      trimDf = trimDf[!(trimDf$flank %in% preDf$flank),] # update trim df
+      hdDf = bind_rows(preDf,hdDf) # update return df
+    }
+  } else {}
+  
+  return(hdDf)
+}
+
+# Read-in global data
+## Raw data
+counts.df = 
+  fread("~/Google\ Drive/Flanks_data/counts.txt", header = T) %>%
+  tbl_df() 
+depth = counts.df %>% group_by(protein,rep) %>% summarise(TF = sum(tf_count), IN = sum(ref_count)) %>% ungroup()
+counts.df = 
+  counts.df %>% 
+  na.omit() %>% 
+  filter(!is.infinite(ddG)) %>%
+  group_by(protein,rep) %>%
+  mutate(ddG = ddG-mean(ddG)) %>% # mean-center
+  ungroup()
+
+## NN predictions
+countsNN.df =
+  fread("~/Google\ Drive/Flanks_data/all_predicted_ddGs.csv", header = T, sep = ",") %>%
+  tbl_df() %>%
+  select(flank,Pho4_ddG,Cbf1_ddG) %>% # select ensemble predictions
+  gather(key,ddG,-flank) %>% # ddG in RT
+  mutate(protein = substring(key,1,4) %>% tolower(), target = flank) %>%
+  select(-key) %>%
+  separate(target, paste0("X", sprintf("%02d",1:10)), 1:9)
+
+countsNN_scaled = fread("~/Flank_seq/data/scaled_nn_preds.txt", header = T) %>% 
+  tbl_df() %>% 
+  mutate(protein = ifelse(protein == "Pho4","pho4","cbf1"))
+
+## titration data
+std_kd = bind_rows(fread("~/Google\ Drive/Flanks_data/std_kd_pho4.csv", header = T) %>% 
+                     mutate(protein = "pho4") %>%
+                     slice(1:31), # remove negative control
+                     fread("~/Google\ Drive/Flanks_data/std_kd_cbf1.csv", header = T) %>% 
+                     mutate(protein = "cbf1") %>%
+                     slice(1:31)) %>%
+  tbl_df() %>%
+  mutate(flank = paste(substring(Sequence,17,21),substring(Sequence,30,34),sep="")) %>%
+  select(flank, estimate, std.error, protein) %>%
+  group_by(protein) %>%
+  mutate(kd = estimate/1E9, # covert to M
+         stdE.err = (std.error/estimate)*0.593, # propagate error
+         stdE = log(kd) * 0.593, # covert to dG
+         target = flank) %>% 
+  separate(target,paste0("X",sprintf("%02d",1:10),sep=""),1:9) %>%
+  ungroup()
+
+## Chip-seq referance genome
+ref.gen = read.fasta(file = "~/Google\ Drive/Flanks_data/S288C_reference_sequence_R27-1-1_20031001.fsa") #2003 yeast reference genome 
+
+## Chip-seq enrichment data
+chip.data = 
+  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
+  filter(Alignability == 1) %>%
+  select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
+
+## Determine flank sequences for all annotated binding sites
+chip.gen =
+  foreach(i = 1:16, .combine = "rbind")%do%{
+    chromo = ref.gen[[i]]
+    foreach(j = chip.data %>% filter(chr == i) %>% .$loc, .combine = "rbind")%do%{
+      window = toupper(paste(chromo[(j-7):(j+8)], collapse = "")) #10 bp search window
+      flank = paste(substring(window,1,5), substring(window,12,17),sep="")
+      chip.data %>% filter(chr == i, loc == j) %>% mutate(flank = flank)
+    }
+  }
+
+## Append reverse complement of Chip-seq flanks
+chip.gen.full =
+  bind_rows(chip.gen %>% mutate(dir = 0), chip.gen %>% group_by(chr,loc,pho4,cbf1) %>% mutate(dir = 1, flank = revcomp(flank))) %>% 
+  distinct() %>% 
+  select(flank, pho4, cbf1)
+
+# Read in model output data from linear regressions
+model_outputs <- fread("~/Google\ Drive/Flanks_data/model_outputs.txt", header = T)
+
+
+
+
+
+
+
+
+
+
+### DMC Functions (Deprecated???)
 extractLine = function(oneLine) { 
   # Input: Character string of read line
   # Output: Dataframe of DMC variables
@@ -342,14 +542,9 @@ appendVar = function(df, dmcVar) {
 }
 ####
 
-findSplitNN = function(seqStr) {
-  # Input: Character string of single DMC variable
-  # Output: Dataframe of base and position 
-  
-  reStr = gregexpr("[ACGT]", seqStr)
-  varStr = paste0("Var", reStr %>% unlist())
-  if (varStr[1] == "Var5" & varStr[2] == "Var6") {F} else {T}
-}
+
+
+#### More deprecated:
 
 diMean = function(strVal,df) {
   # Input: strVal = flank of interest
@@ -361,131 +556,3 @@ diMean = function(strVal,df) {
     df %>% filter(flank == returnVal) %>% .$coef
   } %>% sum()
 }
-
-hdset = function(lettDf) {
-  # input: lettDf = df of character letter {A,C,G,T} in each column
-  # output: 3-row df of 1-HD sets
-  lettSet = c("A","C","G","T")
-  foreach(i = paste0("X",sprintf("%02d",1:10)), .combine = "rbind")%do%{
-    colLett = lettDf[,i] %>% unlist(use.names = F)
-    hdVal = lettSet[!(lettSet %in% colLett)]
-    hdvalDf = data.frame(V1 = hdVal)
-    colnames(hdvalDf) <- i
-    returnDf = left_join(hdvalDf %>% mutate(cross = 1), lettDf %>% select_(paste0("-",i)) %>% mutate(cross = 1), by = "cross") %>% select(-cross)
-    return(returnDf %>% tbl_df())
-  }
-}
-
-hdset2 = function(flankSeq,refSeq) {
-  # input: flankSeq = vector of flank sequence; refSeq = reference
-  # output: vector of hd
-  foreach(i = flankSeq, .combine = "c")%do%{
-    separatedFlank = i %>% strsplit(.,"") %>% unlist()
-    separatedRef = refSeq %>% strsplit(.,"") %>% unlist()
-    sum(separatedFlank != separatedRef)
-  }
-}
-
-recurhd2 = function(refDf, rLevel) {
-  # input: refDf = df of assay data that must include flank, X01:X10 and ddG
-  # rLevel = int specifying the recursion level
-  
-  ## determine highest affinity sequence
-  bestSlice = refDf %>% filter(ddG == min(ddG))
-  
-  ## create df to return
-  hdDf = bestSlice %>% mutate(cc = 0)
-  
-  ## trimmed refDf
-  trimDf = refDf[!(refDf$flank %in% bestSlice$flank),] # remove repeats across levels
-  
-  if (nrow(hdDf) < nrow(refDf)) { # add early stopping
-    foreach(j = 1:rLevel)%do%{ # j level in concentric circles
-      print(paste0("level = ",j))
-      jSlice = hdDf %>% filter(cc == (j-1)) # extract sequences from previous level
-      
-      preDf = foreach(k = 1:nrow(jSlice), .combine = "rbind")%dopar%{ # k = number of elements in previous concentric circle
-        kSlice = jSlice %>% slice(k) %>% select(X01:X10)
-        returnDf = 
-          hdset(kSlice) %>%
-          unite(flank, X01:X10, sep = "")
-      } %>% 
-        distinct() %>% # remove repeats in a single level
-        inner_join(.,trimDf) %>%
-        mutate(cc = j)
-      trimDf = trimDf[!(trimDf$flank %in% preDf$flank),] # update trim df
-      hdDf = bind_rows(preDf,hdDf) # update return df
-    }
-  } else {}
-  
-  return(hdDf)
-}
-
-# Read-in global data
-counts.df = 
-  fread("~/Google\ Drive/Flanks_data/counts.txt", header = T) %>%
-  tbl_df() 
-depth = counts.df %>% group_by(protein,rep) %>% summarise(TF = sum(tf_count), IN = sum(ref_count)) %>% ungroup()
-counts.df = 
-  counts.df %>% 
-  na.omit() %>% 
-  filter(!is.infinite(ddG)) %>%
-  group_by(protein,rep) %>%
-  mutate(ddG = ddG-mean(ddG)) %>% # mean-center
-  ungroup()
-
-countsNN.df =
-  fread("~/Google\ Drive/Flanks_data/all_predicted_ddGs.csv", header = T, sep = ",") %>%
-  tbl_df() %>%
-  select(flank,Pho4_ddG,Cbf1_ddG) %>% # select ensemble predictions
-  gather(key,ddG,-flank) %>% # ddG in RT
-  mutate(protein = substring(key,1,4) %>% tolower(), target = flank) %>%
-  select(-key) %>%
-  separate(target, paste0("X", sprintf("%02d",1:10)), 1:9)
-
-countsNN_scaled = fread("~/Flank_seq/data/scaled_nn_preds.txt", header = T) %>% 
-  tbl_df() %>% 
-  mutate(protein = ifelse(protein == "Pho4","pho4","cbf1"))
-
-std_kd = bind_rows(fread("~/Google\ Drive/Flanks_data/std_kd_pho4.csv", header = T) %>% 
-                     mutate(protein = "pho4") %>%
-                     slice(1:31), # remove negative control
-                     fread("~/Google\ Drive/Flanks_data/std_kd_cbf1.csv", header = T) %>% 
-                     mutate(protein = "cbf1") %>%
-                     slice(1:31)) %>%
-  tbl_df() %>%
-  mutate(flank = paste(substring(Sequence,17,21),substring(Sequence,30,34),sep="")) %>%
-  select(flank, estimate, std.error, protein) %>%
-  group_by(protein) %>%
-  mutate(kd = estimate/1E9,
-         stdE.err = (std.error/estimate)*0.593,
-         stdE = log(kd) * 0.593,
-         target = flank) %>%
-  separate(target,paste0("X",sprintf("%02d",1:10),sep=""),1:9) %>%
-  ungroup()
-
-# read in sequence data
-ref.gen = read.fasta(file = "~/Google\ Drive/Flanks_data/S288C_reference_sequence_R27-1-1_20031001.fsa") #2003
-
-chip.data = 
-  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
-  filter(Alignability == 1) %>%
-  select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
-
-chip.gen =
-  foreach(i = 1:16, .combine = "rbind")%do%{
-    chromo = ref.gen[[i]]
-    foreach(j = chip.data %>% filter(chr == i) %>% .$loc, .combine = "rbind")%do%{
-      window = toupper(paste(chromo[(j-7):(j+8)], collapse = "")) #10 bp search window
-      flank = paste(substring(window,1,5), substring(window,12,17),sep="")
-      chip.data %>% filter(chr == i, loc == j) %>% mutate(flank = flank)
-    }
-  }
-
-chip.gen.full =
-  bind_rows(chip.gen %>% mutate(dir = 0), chip.gen %>% group_by(chr,loc,pho4,cbf1) %>% mutate(dir = 1, flank = revcomp(flank))) %>% 
-  distinct() %>% 
-  select(flank, pho4, cbf1)
-
-# Read in model output data and put into simple model form
-model_outputs <- fread("~/Google\ Drive/Flanks_data/model_outputs.txt", header = T)

@@ -740,11 +740,13 @@ labelDf2 =
   ungroup() %>% 
   select(protein,flank,id,colVal,feature) %>% 
   left_join(.,data.frame(id = c(1:4,4:1), yPos = c(0.8,0.6,0.4,0.2,-0.5,-0.7,-0.9,-1.1), colVal = c(1,1,1,1,-1,-1,-1,-1))) %>% 
-  mutate(feature = factor(feature, levels = c("mononucleotide","dinucleotide")))
+  mutate(feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
+  filter(protein == "Cbf1")
 
 lassoPlot2 = 
   left_join(fread("~/Google\ Drive/flanks_data/lassoPlot.txt", header = T), labelDf2) %>% 
-  mutate(colVal = ifelse(is.na(colVal),0,colVal)) %>% 
+  mutate(colVal = ifelse(is.na(colVal),0,colVal),
+         feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
   tbl_df() %>% 
   filter(protein == "Cbf1")
 
@@ -804,7 +806,7 @@ F5A = ggplot(chipDat, aes(kd, occ)) +
                         limit = c(min(scaledNN$scaled_ddG),max(scaledNN$scaled_ddG))) +
   scale_x_log10()
 
-ggsave("~/Flanks/Images/F5A.png", plot = F5A, height = 5, width = 8, units = "cm")
+ggsave("~/Flanks/Images/f5pA.svg", plot = F5A, height = 5, width = 8, units = "cm")
 ```
 
 ## Panel B: ChiP overlay
