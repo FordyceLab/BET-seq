@@ -1,15 +1,20 @@
 ---
-title: "Final figures"
-author: "Dan"
+title: "Main Text Figures"
+author: "Dan Le and Tyler Shimko"
 date: "8/15/2017"
 output: html_document
 ---
 
 ```{r, include=FALSE}
-source("~/Flanks/setup.R")
+# Set the working directory
+WORKING_DIR = "~/Flanks"
+
+# Run the setup file to read in and process all data
+setwd(WORKING_DIR)
+source("setup.R")
 ```
 
-#Figure 1:
+# Figure 1:
 ## Panel A: DNA design
 ## Panel B: Device operation
 ## Panel C: Sequencing quantitation
@@ -34,7 +39,7 @@ foreach(prot = c("pho4","cbf1"))%dopar%{
     mutate(t = seq(0,360-(360/n()),length.out = n()) * pi / 180) %>%
     ungroup()
 
-  write.table(shockDf, paste0("~/Google\ Drive/Flanks_data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
+  write.table(shockDf, paste0("data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 }
 ```
 
@@ -44,7 +49,7 @@ prot = "pho4"
 ###
 
 shockDf = 
-  fread(paste0("~/Google\ Drive/Flanks_data/shock_",prot,".txt"), header = T) %>% 
+  fread(paste0("data/shock_",prot,".txt"), header = T) %>% 
   mutate(t = t/2) %>% #create hemisphere
   tbl_df() %>%
   bind_rows(data.frame(flank = NA, ddG = NA, cc = 11, t = 2*pi))
@@ -76,7 +81,7 @@ p1 = ggplot(shockDf) +
   geom_text(data = labelDf %>% filter(cc != 0, cc != 11), aes(pi,cc,label =cc), inherit.aes = F, vjust = 1.5) +
   geom_text(data = labelDf %>% filter(cc != 11), aes(0,cc,label =filling), inherit.aes = F, angle = 45, hjust= 0.9, vjust = 1, color = "gray")
 
-ggsave("~/Flanks/Images/f1pD.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
+ggsave("images/f1pD.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
 ```
 
 # Figure 2:
@@ -93,7 +98,7 @@ testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
 
 # read-in data
 readDat2 =
-  fread("~/Google\ Drive/Flanks_data/spec_R3_2.txt", header = F) %>% #R3.2 (only from Expt 1)
+  fread("data/spec_R3_2.txt", header = F) %>% #R3.2 (only from Expt 1)
   tbl_df() %>%
   rename(Seq = V1, True_Bound = V2, True_Unbound = V3, True_Ratio = V4) %>%
   mutate(True_Bound_P = True_Bound / sum(True_Bound),
@@ -162,12 +167,12 @@ dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equ
 } %>% gather(key,value,c(r2seq,r2pwm)) %>% 
   mutate(acc= ifelse(key == "r2seq", value * seqObsPct, value))
 
-write.table(dsPWM, "~/Google\ Drive/Flanks_data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(dsPWM, "data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 
 
 ```{r}
-dsPWM = fread("~/Google\ Drive/Flanks_data/dspwmSimulation.txt", header = T)
+dsPWM = fread("data/dspwmSimulation.txt", header = T)
 
 colPal = brewer.pal(9,"Set1")
 p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
@@ -192,7 +197,7 @@ p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
   ylab(("Median\nnormalized accuracy")) +
   xlab("Sequencing depth, read counts")
 
-ggsave("~/Flanks/Images/f2pA.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f2pA.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel B: Simulate assay output as function of defined parameters.
@@ -244,12 +249,12 @@ returnDf =
     }
   }
 
-write.table(returnDf, "~/Google\ Drive/Flanks_data/modelSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(returnDf, "modelSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 
 ```{r}
 returnDf2 =
-  fread("~/Google\ Drive/Flanks_data/modelSimulation.txt", header = T) %>%
+  fread("data/modelSimulation.txt", header = T) %>%
   mutate(r2 = r2/seqObsPct) %>% 
   gather(key,value,r2,seqObsPct) %>% 
   tbl_df() %>%
@@ -281,14 +286,14 @@ p1 = ggplot(returnDf2 ) +
                      values = colPal[(length(colPal)-6):length(colPal)], 
                      labels = expression(bold("10"^"3"),bold("10"^"4"),bold("10"^"5"),bold("10"^"6"),bold("10"^"7"),bold("10"^"8")))
 
-ggsave("~/Flanks/Images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel C: Flank library depth simultion
 ```{r, eval=FALSE}
 # FYI spec-seq = 5.4kt (3.2 kcal/mol) affinity range
 readDat =
-  fread("~/Google\ Drive/Flanks_data/Stormo_All_Expts.txt", header = T) %>%
+  fread("data/Stormo_All_Expts.txt", header = T) %>%
   tbl_df() %>%
   rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
   mutate(index = c(rep(1,256), rep(2,256), rep(3,1024), rep(4,1024))) %>% #R2,R4,R3.1,R3.2 (only from Expt 1)
@@ -348,10 +353,10 @@ dsDat = foreach(i =iVal, .combine = "rbind")%do%{ # sampling depth split equally
         }
 } %>% tbl_df()
 
-write.table(dsDat, "~/Google\ Drive/Flanks_data/downsampleSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(dsDat, "data/downsampleSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 ```{r}
-dsDat = fread("~/Google\ Drive/Flanks_data/downsampleSimulation.txt", header = T) %>% 
+dsDat = fread("data/downsampleSimulation.txt", header = T) %>% 
   filter(type == "ref_ddG") %>% 
   mutate(r2 = r2/seqObsPct) %>% 
   gather(key,value,seqObsPct,r2) %>% 
@@ -377,7 +382,7 @@ p1 = ggplot(dsDat) +
                      "", 
                      values = colPal[1:2])
 
-ggsave("~/Flanks/Images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
 
 dsDat %>% 
   tbl_df() %>% 
@@ -391,7 +396,7 @@ dsDat %>%
 ## Panel B: Histogram of core vs flank ddGs
 ```{r}
 coreDf = 
-  fread("~/Google\ Drive/Flanks_data/core_mutation_ddG.txt", header = T) %>% 
+  fread("data/core_mutation_ddG.txt", header = T) %>% 
   tbl_df() %>% 
   mutate(type = "core") %>% 
   bind_rows(.,countsNN_scaled %>%
@@ -414,7 +419,7 @@ F3B = ggplot(coreDf) +
   xlab("") +
   scale_color_manual("", values = colPal[1:2])
 
-ggsave("~/Flanks/Images/f3pB.svg", plot = F3B, height = 5, width = 5, units = "cm", dev = svglite)
+ggsave("images/f3pB.svg", plot = F3B, height = 5, width = 5, units = "cm", dev = svglite)
 
 ### analysis: median kd
 countsNN_scaled %>% 
@@ -458,7 +463,7 @@ p1 = ggplot(test,aes(monuc.pos, monuc.meanval)) +
   facet_grid(.~protein, scales = "free") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("~/Flanks/Images/f3pC_1.svg", plot = p1, height = 4.5, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f3pC_1.svg", plot = p1, height = 4.5, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ```{r}
@@ -498,7 +503,7 @@ p2 = ggplot() +
 
 pp = cowplot::plot_grid(p1,p2,nrow=1)
 
-ggsave("~/Flanks/Images/f3pC_2.svg", plot = pp, height = 3, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f3pC_2.svg", plot = pp, height = 3, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel D: Mononuclotide model vs NN hexbin scatter
@@ -542,7 +547,7 @@ create_models <- function(data) {
 }
 
 # Read in and ajust the NN predicted ddG values
-data <- fread("~/Google\ Drive/Flanks_data/scaled_nn_preds.txt") %>% 
+data <- fread("data/scaled_nn_preds.txt") %>% 
   select(flank, protein, scaled_ddG) %>% 
   separate(flank, into=paste0("X", sprintf("%02d", 1:10)), sep = 1:9)
 
@@ -552,7 +557,7 @@ model_outputs <- data %>%
   do(create_models(.))
 
 # Write model results to text file
-write.table(model_outputs, "~/Google\ Drive/Flanks_data/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+write.table(model_outputs, "data/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ```{r}
@@ -578,7 +583,7 @@ F3D = ggplot(simple_model_data %>% filter(model == "mononucleotide"), aes(x = .f
   presentation +
   theme(legend.key.size = unit(0.25, "cm"))
 
-ggsave("~/Flanks/Images/f3pD.svg", F3D, width = 8.7, height = 4.5, units = "cm", dev = svglite)
+ggsave("images/f3pD.svg", F3D, width = 8.7, height = 4.5, units = "cm", dev = svglite)
 ```
 
 # Figure 4:
@@ -596,12 +601,12 @@ F4A = ggplot(simple_model_data %>% filter(model != "mononucleotide"), aes(x = .f
   presentation +
   theme(legend.key.size = unit(0.25, "cm"))
 
-ggsave("~/Flanks/Images/f4pA.svg", F4A, width = 10, height = 6, units = "cm", dev = svglite)
+ggsave("images/f4pA.svg", F4A, width = 10, height = 6, units = "cm", dev = svglite)
 ```
 
 ## Panel B: pareto plot
 ```{r}
-training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>%
+training_data <- fread("data/train_seqs.txt", header = FALSE) %>%
   rename(flank = V1)
 
 colPal = brewer.pal(9,"Set1")
@@ -639,10 +644,142 @@ F4B = ggplot(corOut) +
   ylab(expression(bold(paste("Pearson's ",italic(r)^"2")))) +
   xlab("")
 
-ggsave("~/Flanks/Images/f4pB.svg", F4B, width = 10, height = 6, units = "cm", dev = svglite)
+ggsave("images/f4pB.svg", F4B, width = 10, height = 6, units = "cm", dev = svglite)
 ```
 
 ## Panel C: B2 bomber of Cbf1
+
+```{r}
+# Read in the count data from our experiments
+interaction_data <- fread("~/Flank_seq/data/scaled_nn_preds.txt") %>% 
+  separate(flank, into = paste0("X", sprintf("%02d", 1:10)), sep = 1:9, remove = FALSE)
+
+# Define the function to get the mean residual multiplied by the scalar
+get_effect <- function(col1, col2, data) {
+  colnames(data)[which(colnames(data) == col1)] <- "nt1"
+  colnames(data)[which(colnames(data) == col2)] <- "nt2"
+
+  output <- data %>%
+    group_by(nt1, nt2) %>%
+    summarize(ddG = mean(.resid)) %>%
+    mutate(pos1 = col1, pos2 = col2)
+
+  return(output)
+}
+
+get_mean_effects <- function(data) {
+  colnames <- colnames(data)[1:10]
+  combos <- expand.grid(pos1 = colnames, pos2 = colnames) %>% 
+    mutate(num1 = as.numeric(gsub("X", "", pos1)),
+           num2 = as.numeric(gsub("X", "", pos2))) %>% 
+    filter(num1 < num2) %>% 
+    select(pos1, pos2)
+  
+  output <- combos %>%
+    group_by(pos1, pos2) %>%
+    do(get_effect(.$pos1[1], .$pos2[1], data))
+}
+
+# Make a function to plot the mean dinuc residual and save to a file
+make_plot <- function(data, data_string){
+  
+  # Handle the presentation style
+  presentation <-  theme_bw() + 
+    theme(plot.title = element_text(hjust = 0.5,
+                                    family = "Arial",
+                                    face = "bold",
+                                    size = 6),
+          axis.title = element_text(family = "Arial",
+                                    face = "bold",
+                                    size = 6),
+          axis.text = element_text(family = "Arial",
+                                   face = "bold",
+                                   size = 6),
+          strip.text = element_text(family = "Arial",
+                                    face = "bold",
+                                    size = 6),
+          legend.title = element_text(family = "Arial",
+                                      face = "bold",
+                                      size = 6),
+          legend.text = element_text(family = "Arial",
+                                     face = "bold",
+                                     size = 6))
+  
+  # Subset the data to the protein of interest
+  new_data <- data %>%
+    filter(protein == data_string) %>% 
+    select(X01:X10, scaled_ddG)
+  
+  # Make mononuc plots
+  mononuc_data <- new_data %>% 
+    rename(.resid = scaled_ddG)
+  
+  mononuc_plot_data <- get_mean_effects(mononuc_data) %>% 
+    ungroup() %>% 
+    mutate(pos1 = as.numeric(gsub("X", "", pos1)) - 6,
+           pos2 = as.numeric(gsub("X", "", pos2)) - 6) %>% 
+    mutate(pos1 = pos1 + (pos1 >= 0),
+           pos2 = pos2 + (pos2 >= 0))
+  
+  plot1 <- ggplot(mononuc_plot_data) +
+    facet_grid(pos2~pos1, space = "free") +
+    geom_tile(aes(nt1, nt2, fill=ddG)) +
+    presentation +
+    theme(aspect.ratio = 1) +
+    scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white") +
+    theme(axis.text.y = element_text(angle = 270, color = "black", hjust = 0.5),
+          axis.text.x = element_text(angle = 0, color = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_rect(size = 2)) +
+    
+    xlab("") +
+    ylab("") +
+    theme(aspect.ratio = 1,
+          legend.key.size = unit(0.3,"cm"),
+          panel.spacing = unit(0.01,"cm"))
+  
+  ggsave(paste0("images/", data_string, "_mononuc_mean_ddg.svg"), plot = plot1,
+    height = 7, width = 7, units = "cm", dpi = 300)
+  
+  # Make the linear model
+  model <- lm(scaled_ddG ~ ., data = new_data)
+  
+  # Extract the fitted and resid values
+  model_results <- augment(model) %>% 
+    select(X01:X10, .resid, .fitted)
+  
+  # Get the plot data for only dinuc effects
+  plot_data <- get_mean_effects(model_results) %>% 
+    ungroup() %>% 
+    mutate(pos1 = as.numeric(gsub("X", "", pos1)) - 6,
+           pos2 = as.numeric(gsub("X", "", pos2)) - 6) %>% 
+    mutate(pos1 = pos1 + (pos1 >= 0),
+           pos2 = pos2 + (pos2 >= 0))
+  
+  plot2 <- ggplot(plot_data) +
+    facet_grid(pos2~pos1, space = "free") +
+    geom_tile(aes(nt1, nt2, fill=ddG)) +
+    presentation +
+    theme(aspect.ratio = 1) +
+    scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white") +
+    theme(axis.text.y = element_text(angle = 270, color = "black", hjust = 0.5),
+          axis.text.x = element_text(angle = 0, color = "black"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_rect(size = 2)) +
+    xlab("") +
+    ylab("") +
+    theme(aspect.ratio = 1,
+          legend.key.size = unit(0.3,"cm"),
+          panel.spacing = unit(0.01,"cm"))
+  
+  ggsave(paste0("images/", data_string, "_dinuc_mean_ddg.svg"), plot = plot2,
+    height = 7, width = 7, units = "cm", dpi = 300)
+}
+
+make_plot(interaction_data, "Cbf1")
+```
 
 ## Panel D: Cbf1 LASSO regression
 ```{r, eval = FALSE}
@@ -678,12 +815,12 @@ y <- testDat %>% .$ddG
 # Perform LASSO regression
 fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
 fitLasso = tidy(fit.lasso)
-write.table(fitLasso, paste0("~/Google\ Drive/Flanks_data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(fitLasso, paste0("data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # 10-fold cross validation
 cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
 cvLasso = tidy(cv.lasso)
-write.table(cvLasso, paste0("~/Google\ Drive/Flanks_data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(cvLasso, paste0("data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # Extract coefficients
 dfVar =
@@ -703,11 +840,11 @@ dfVar =
   mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
          elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
   ungroup()
-write.table(dfVar, paste0("~/Google\ Drive/Flanks_data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(dfVar, paste0("data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # LASSO plot
-fitLasso = bind_rows(fread(paste0("~/Google\ Drive/Flanks_data/lassoFit_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-                     fread(paste0("~/Google\ Drive/Flanks_data/lassoFit_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>% 
+fitLasso = bind_rows(fread(paste0("data/lassoFit_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+                     fread(paste0("data/lassoFit_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>% 
   separate(term,c("variable","base"),sep = "[.]") %>%
   mutate(dfrow = substring(variable, 4, nchar(variable)) %>% as.integer()) %>%
   group_by(estimate,lambda,dev.ratio,step) %>%
@@ -736,12 +873,12 @@ lassoPlot = foreach(j = c("pho4","cbf1"), .combine = "rbind")%do%{
              feature = ifelse(type == 1,"mononucleotide","dinucleotide"),
              feature = factor(feature, levels = c("mononucleotide","dinucleotide")))
 
-write.table(lassoPlot, "~/Google\ Drive/flanks_data/lassoPlot.txt", col.names = T, row.names = F, quote = F, sep = "\t")
+write.table(lassoPlot, "data/lassoPlot.txt", col.names = T, row.names = F, quote = F, sep = "\t")
 ```
 
 ```{r}
 labelDf2 = 
-  fread("~/Google\ Drive/flanks_data/lassoPlot.txt", header = T) %>%
+  fread("data/lassoPlot.txt", header = T) %>%
   filter(estimate != 0) %>% 
   group_by(protein, feature, flank) %>%
   mutate(maxLamdha = max(lambda)) %>% 
@@ -761,7 +898,7 @@ labelDf2 =
   filter(protein == "Cbf1")
 
 lassoPlot2 = 
-  left_join(fread("~/Google\ Drive/flanks_data/lassoPlot.txt", header = T), labelDf2) %>% 
+  left_join(fread("data/lassoPlot.txt", header = T), labelDf2) %>% 
   mutate(colVal = ifelse(is.na(colVal),0,colVal),
          feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
   tbl_df() %>% 
@@ -784,7 +921,7 @@ F4D = ggplot(lassoPlot2) +
   facet_wrap(~feature, nrow = 1) +
   ylim(c(-1.2,0.9))
 
-ggsave("~/Flanks/Images/f4pD.svg", plot = F4D, height = 5, width = 17, units = "cm", dev = svglite)
+ggsave("images/f4pD.svg", plot = F4D, height = 5, width = 17, units = "cm", dev = svglite)
 ```
 
 # Figure 5:
@@ -797,7 +934,7 @@ scaledNN =
          kd = round(kd,0))
 
 chip.data = 
-  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
+  tbl_df(read.csv(file = "data/molcel3915mmc2.csv", header = T)) %>%
   filter(Alignability == 1) %>%
   select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
 
@@ -823,14 +960,14 @@ F5A = ggplot(chipDat, aes(kd, occ)) +
                         limit = c(min(scaledNN$scaled_ddG),max(scaledNN$scaled_ddG))) +
   scale_x_log10()
 
-ggsave("~/Flanks/Images/f5pA.svg", plot = F5A, height = 5, width = 8.7, units = "cm", dev = svglite)
+ggsave("images/f5pA.svg", plot = F5A, height = 5, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel B: ChiP overlay
 ```{r}
 shockDf = 
-  bind_rows(fread(paste0("~/Google\ Drive/Flanks_data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-            fread(paste0("~/Google\ Drive/Flanks_data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
+  bind_rows(fread(paste0("data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+            fread(paste0("data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df()
 
 overlayDf = 
@@ -866,267 +1003,6 @@ f5pB = ggplot(overlayDf) +
   scale_y_continuous(breaks = 0:10) +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("~/Flanks/Images/f5pB.png", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600)
-ggsave("~/Flanks/Images/f5pB.svg", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600, dev = svglite)
+ggsave("images/f5pB.png", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600)
+ggsave("images/f5pB.svg", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600, dev = svglite)
 ```
-
-########
-########
-########
-
-# Tyler figures
-
-
-# Comparisons between mono- and dinucleotide models and NN predictions
-
-Setup for the figures: make models with NN-predicted data and save to model_outputs.txt. This step is usually run on Zion.
-
-```{r eval=FALSE}
-library(data.table)
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-library(broom)
-
-# Function to create models and extract predicted values
-create_models <- function(data) {
-  
-  # Get the protein name
-  dataset_name <- data$protein[1]
-  
-  # Select remove proetin column
-  data <- select(data, -protein)
-  
-  # Make the mononucleotide model
-  model <- lm(scaled_ddG ~ ., data = data)
-  mono_nuc <- augment(model, data)
-  
-  mono_nuc$model <- "mono-nucleotide"
-  
-  # Make nearest neighbor dinucleotide model
-  model <- lm(scaled_ddG ~ X01 +X02 + X03 + X04 + X05 +
-                X06 + X07 + X09 + X10 +
-                X01:X02 + X02:X03 + X03:X04 + X04:X05 +
-                X06:X07 + X07:X08 + X08:X09 + X09:X10, data = data)
-  nearest_n <- augment(model, data)
-  
-  nearest_n$model <- "nearest neighbor"
-  
-  # Make full dinucleotide model
-  model <- lm(scaled_ddG ~ .*., data = data)
-  di_nuc <- augment(model, data)
-  
-  di_nuc$model <- "di-nucleotide"
-  
-  # Join and output all the data
-  model_preds <- bind_rows(mono_nuc, nearest_n, di_nuc)
-  
-  model_preds$dataset <- dataset_name
-  
-  return(model_preds)
-}
-
-# Read in and ajust the NN predicted ddG values
-data <- fread("~/Flank_seq/data/scaled_nn_preds.txt") %>% 
-  select(flank, protein, scaled_ddG) %>% 
-  separate(flank, into=paste0("X", sprintf("%02d", 1:10)), sep = 1:9)
-
-# Generate models and get predicted values for all models for all preoteins
-model_outputs <- data %>% 
-  group_by(protein) %>% 
-  do(create_models(.))
-
-# Write model results to text file
-write.table(model_outputs, "~/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
-```
-
-## Read in the preprocessed data
-```{r}
-# Read in model output data and put into simple model form
-model_outputs <- fread("~/Google Drive/Flanks_data/model_outputs.txt")
-
-simple_model_data <- model_outputs %>% 
-  ungroup() %>% 
-  # unite(flank, X01:X10, sep = "") %>%
-  rename(ddG = scaled_ddG) %>% 
-  select(flank, ddG, .fitted, model, dataset) %>% 
-  mutate(model = ifelse(model == "mono-nucleotide",
-                        "mononucleotide", ifelse(model == "nearest neighbor",
-                                                 "nearest neighbor", "dinucleotide")),
-         model = factor(model, levels = c("mononucleotide", "nearest neighbor", "dinucleotide")),
-         dataset = factor(dataset, levels = c("Pho4", "Cbf1")))
-
-```
-
-## Mononucleotide models 
-```{r}
-library(latex2exp)
-
-ggplot(simple_model_data %>% filter(model == "mononucleotide"), aes(x = .fitted, y = ddG)) +
-  geom_hex(bins = 50) +
-  scale_fill_gradient2(name = "Count", trans = "log",
-                       low = "black", mid = "red", high = "yellow", midpoint = 6,
-                       breaks = c(1, 10, 100, 1000, 10000)) +
-  facet_grid(model~dataset) +
-  coord_fixed() +
-  xlab(TeX("\\textbf{Linear model predicted $\\Delta \\Delta G$, kcal/mol}")) +
-  ylab(TeX("\\textbf{Neural network predicted $\\Delta \\Delta G$, kcal/mol}")) +
-  presentation +
-  theme(legend.key.size = unit(0.25, "cm"))
-
-ggsave("~/Flanks/Images/f3pX.svg", width = 10, height = 6,
-       units = "cm")
-```
-
-## Dinucleotide models
-```{r}
-ggplot(simple_model_data %>% filter(model != "mononucleotide"), aes(x = .fitted, y = ddG)) +
-  geom_hex(bins = 50) +
-  scale_fill_gradient2(name = "Count", trans = "log",
-                       low = "black", mid = "red", high = "yellow", midpoint = 6,
-                       breaks = c(1, 10, 100, 1000, 10000)) +
-  facet_grid(model~dataset) +
-  coord_fixed() +
-  xlab(TeX("\\textbf{Linear model prediction $\\Delta \\Delta G$, kcal/mol}")) +
-  ylab(TeX("\\textbf{Neural network prediction $\\Delta \\Delta G$, kcal/mol}")) +
-  presentation +
-  theme(legend.key.size = unit(0.25, "cm"))
-
-ggsave("~/Flanks/Images/f4pX.svg", width = 10, height = 6,
-       units = "cm")
-```
-
-
-```{r}
-# Total r^2
-simple_model_data %>%
-  group_by(model, dataset) %>%
-  summarize(r2 = cor(ddG, .fitted)^2)
-
-# Held-out r^2
-training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>% 
-  rename(flank = V1)
-
-simple_model_data %>%
-  anti_join(., training_data) %>% 
-  group_by(model, dataset) %>%
-  summarize(r2 = cor(ddG, .fitted)^2)
-```
-
-
-# B2 Bomber Plot
-
-```{r}
-library(data.table)
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-library(broom)
-
-# Read in the count data from our experiments
-data <- fread("~/Google Drive/Flanks_data/scaled_nn_preds.txt") %>% 
-  separate(flank, into = paste0("X", sprintf("%02d", 1:10)), sep = 1:9, remove = FALSE)
-
-# Define the function to get the mean residual multiplied by the scalar
-get_effect <- function(col1, col2, data) {
-  colnames(data)[which(colnames(data) == col1)] <- "nt1"
-  colnames(data)[which(colnames(data) == col2)] <- "nt2"
-
-  output <- data %>%
-    group_by(nt1, nt2) %>%
-    summarize(ddG = mean(.resid)) %>%
-    mutate(pos1 = col1, pos2 = col2)
-
-  return(output)
-}
-
-get_mean_effects <- function(data) {
-  colnames <- colnames(data)[1:10]
-  combos <- expand.grid(pos1 = colnames, pos2 = colnames) %>% 
-    mutate(num1 = as.numeric(gsub("X", "", pos1)),
-           num2 = as.numeric(gsub("X", "", pos2))) %>% 
-    filter(num1 < num2) %>% 
-    select(pos1, pos2)
-  
-  output <- combos %>%
-    group_by(pos1, pos2) %>%
-    do(get_effect(.$pos1[1], .$pos2[1], data))
-}
-
-# Make a function to plot the mean dinuc residual and save to a file
-make_plot <- function(data, data_string, kd_data){
-  
-  # Handle the presentation style
-  presentation <-  theme_bw() + 
-    theme(plot.title = element_text(hjust = 0.5,
-                                    family = "Arial",
-                                    face = "bold",
-                                    size = 24),
-          axis.title = element_text(family = "Arial",
-                                    face = "bold",
-                                    size = 18),
-          axis.text = element_text(family = "Arial",
-                                   face = "bold",
-                                   size = 14),
-          strip.text = element_text(family = "Arial",
-                                    face = "bold",
-                                    size = 12),
-          legend.title = element_text(family = "Arial",
-                                      face = "bold",
-                                      size = 14),
-          legend.text = element_text(family = "Arial",
-                                     face = "bold",
-                                     size = 12))
-  
-  # Subset the data to the protein of interest
-  new_data <- data %>%
-    filter(protein == data_string) %>% 
-    select(X01:X10, scaled_ddG)
-  
-  # Make the linear model
-  model <- lm(scaled_ddG ~ ., data = new_data)
-  
-  # Extract the fitted and resid values
-  model_results <- augment(model) %>% 
-    select(X01:X10, .resid, .fitted)
-  
-  # Titration comparison
-  plot_data <- get_mean_effects(model_results) %>% 
-    ungroup() %>% 
-    mutate(pos1 = as.numeric(gsub("X", "", pos1)) - 6,
-           pos2 = as.numeric(gsub("X", "", pos2)) - 6) %>% 
-    mutate(pos1 = pos1 + (pos1 >= 0),
-           pos2 = pos2 + (pos2 >= 0))
-  
-  plot1 <- ggplot(plot_data) +
-    facet_grid(pos2~pos1, space = "free") +
-    geom_tile(aes(nt1, nt2, fill=ddG)) +
-    presentation +
-    theme(aspect.ratio = 1) +
-    # scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white") +
-    scale_fill_gradient2(low = "#0057E7", high = "#D62D20", mid = "white", limits = c(-0.51, 0.51)) +
-    theme(axis.text.y = element_text(angle = 270, color = "black", hjust = 0.5),
-          axis.text.x = element_text(angle = 0, color = "black"),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.border = element_rect(size = 2)) +
-    xlab("") +
-    ylab("")
-  
-  return(plot1)
-  
-  ggsave(paste0("~/Flank_seq/Figures/Final_Figures/Figure_4/", data_string, "_dinuc_mean_ddg.svg"),
-         height = 10, width = 10, units = "in")
-  
-}
-
-make_plot(data, "Pho4", std_kd)
-test <- make_plot(data, "Cbf1", std_kd)
-
-test
-```
-
-
-
-
-

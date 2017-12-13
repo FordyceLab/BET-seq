@@ -371,7 +371,7 @@ recurhd2 = function(refDf, rLevel) {
 # Read-in global data
 ## Raw data
 counts.df = 
-  fread("~/Google\ Drive/Flanks_data/counts.txt", header = T) %>%
+  fread("data/counts.txt", header = T) %>%
   tbl_df() 
 depth = counts.df %>% group_by(protein,rep) %>% summarise(TF = sum(tf_count), IN = sum(ref_count)) %>% ungroup()
 counts.df = 
@@ -384,7 +384,7 @@ counts.df =
 
 ## NN predictions
 countsNN.df =
-  fread("~/Google\ Drive/Flanks_data/all_predicted_ddGs.csv", header = T, sep = ",") %>%
+  fread("data/all_predicted_ddGs.csv", header = T, sep = ",") %>%
   tbl_df() %>%
   select(flank,Pho4_ddG,Cbf1_ddG) %>% # select ensemble predictions
   gather(key,ddG,-flank) %>% # ddG in RT
@@ -392,15 +392,15 @@ countsNN.df =
   select(-key) %>%
   separate(target, paste0("X", sprintf("%02d",1:10)), 1:9)
 
-countsNN_scaled = fread("~/Flank_seq/data/scaled_nn_preds.txt", header = T) %>% 
+countsNN_scaled = fread("data/scaled_nn_preds.txt", header = T) %>% 
   tbl_df() %>% 
   mutate(protein = ifelse(protein == "Pho4","pho4","cbf1"))
 
 ## titration data
-std_kd = bind_rows(fread("~/Google\ Drive/Flanks_data/std_kd_pho4.csv", header = T) %>% 
+std_kd = bind_rows(fread("data/std_kd_pho4.csv", header = T) %>% 
                      mutate(protein = "pho4") %>%
                      slice(1:31), # remove negative control
-                     fread("~/Google\ Drive/Flanks_data/std_kd_cbf1.csv", header = T) %>% 
+                     fread("data/std_kd_cbf1.csv", header = T) %>% 
                      mutate(protein = "cbf1") %>%
                      slice(1:31)) %>%
   tbl_df() %>%
@@ -415,11 +415,11 @@ std_kd = bind_rows(fread("~/Google\ Drive/Flanks_data/std_kd_pho4.csv", header =
   ungroup()
 
 ## Chip-seq referance genome
-ref.gen = read.fasta(file = "~/Google\ Drive/Flanks_data/S288C_reference_sequence_R27-1-1_20031001.fsa") #2003 yeast reference genome 
+ref.gen = read.fasta(file = "data/S288C_reference_sequence_R27-1-1_20031001.fsa") #2003 yeast reference genome 
 
 ## Chip-seq enrichment data
 chip.data = 
-  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
+  tbl_df(read.csv(file = "data/molcel3915mmc2.csv", header = T)) %>%
   filter(Alignability == 1) %>%
   select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
 
@@ -441,7 +441,7 @@ chip.gen.full =
   select(flank, pho4, cbf1)
 
 # Read in model output data from linear regressions
-model_outputs <- fread("~/Google\ Drive/Flanks_data/model_outputs.txt", header = T)
+model_outputs <- fread("data/model_outputs.txt", header = T)
 
 
 
