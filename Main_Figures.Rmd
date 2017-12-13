@@ -5,7 +5,7 @@ date: "8/15/2017"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r, include=FALSE}
 source("~/Flanks/setup.R")
 ```
 
@@ -37,6 +37,7 @@ foreach(prot = c("pho4","cbf1"))%dopar%{
   write.table(shockDf, paste0("~/Google\ Drive/Flanks_data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 }
 ```
+
 ```{r}
 ###
 prot = "pho4"
@@ -63,13 +64,15 @@ p1 = ggplot(shockDf) +
   coord_polar(start = -pi/2) +
   ylim(c(0,10)) +
   scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
+  presentation +
   theme(aspect.ratio = 1, 
         axis.title = element_blank(),
         axis.text = element_blank(),
         axis.line = element_blank(),
         axis.ticks = element_blank(),
         legend.position = "none",
-        legend.text = element_text(angle = 45)) +
+        legend.text = element_text(angle = 45),
+        panel.grid = element_blank()) +
   geom_text(data = labelDf %>% filter(cc != 0, cc != 11), aes(pi,cc,label =cc), inherit.aes = F, vjust = 1.5) +
   geom_text(data = labelDf %>% filter(cc != 11), aes(0,cc,label =filling), inherit.aes = F, angle = 45, hjust= 0.9, vjust = 1, color = "gray")
 
@@ -161,6 +164,8 @@ dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equ
 
 write.table(dsPWM, "~/Google\ Drive/Flanks_data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
+
+
 ```{r}
 dsPWM = fread("~/Google\ Drive/Flanks_data/dspwmSimulation.txt", header = T)
 
@@ -187,7 +192,7 @@ p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
   ylab(("Median\nnormalized accuracy")) +
   xlab("Sequencing depth, read counts")
 
-ggsave("~/Flanks/Images/f2pA.svg", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pA.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel B: Simulate assay output as function of defined parameters.
@@ -241,6 +246,7 @@ returnDf =
 
 write.table(returnDf, "~/Google\ Drive/Flanks_data/modelSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
+
 ```{r}
 returnDf2 =
   fread("~/Google\ Drive/Flanks_data/modelSimulation.txt", header = T) %>%
@@ -275,7 +281,7 @@ p1 = ggplot(returnDf2 ) +
                      values = colPal[(length(colPal)-6):length(colPal)], 
                      labels = expression(bold("10"^"3"),bold("10"^"4"),bold("10"^"5"),bold("10"^"6"),bold("10"^"7"),bold("10"^"8")))
 
-ggsave("~/Flanks/Images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel C: Flank library depth simultion
@@ -371,7 +377,7 @@ p1 = ggplot(dsDat) +
                      "", 
                      values = colPal[1:2])
 
-ggsave("~/Flanks/Images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f2pC.svg", plot = p1, height = 3, width = 8.7, units = "cm", dev = svglite)
 
 dsDat %>% 
   tbl_df() %>% 
@@ -408,7 +414,7 @@ F3B = ggplot(coreDf) +
   xlab("") +
   scale_color_manual("", values = colPal[1:2])
 
-ggsave("~/Flanks/Images/f3pB.svg", plot = F3B, height = 5, width = 5, units = "cm")
+ggsave("~/Flanks/Images/f3pB.svg", plot = F3B, height = 5, width = 5, units = "cm", dev = svglite)
 
 ### analysis: median kd
 countsNN_scaled %>% 
@@ -440,8 +446,7 @@ test =
 p1 = ggplot(test,aes(monuc.pos, monuc.meanval)) +
   presentation +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2.5) +
-  theme(aspect.ratio = 1, 
-        legend.position = "none",
+  theme(legend.position = "none",
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         axis.text.x = element_text(angle = 45,
@@ -453,10 +458,12 @@ p1 = ggplot(test,aes(monuc.pos, monuc.meanval)) +
   facet_grid(.~protein, scales = "free") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("~/Flanks/Images/f3pC_1.svg", plot = p1, height = 4.5, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pC_1.svg", plot = p1, height = 4.5, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ```{r}
+library(ggseqlogo)
+
 pwmList = list("Pho4" = fread("~/Google\ Drive/Flanks_data/pwm_pho4.txt", header = F) %>% as.matrix(),
                "Cbf1" = fread("~/Google\ Drive/Flanks_data/pwm_cbf1.txt", header = F) %>% as.matrix())
 row.names(pwmList[["Pho4"]]) = c("A","C","G","T")
@@ -491,7 +498,7 @@ p2 = ggplot() +
 
 pp = cowplot::plot_grid(p1,p2,nrow=1)
 
-ggsave("~/Flanks/Images/f3pC_2.svg", plot = pp, height = 3, width = 8.7, units = "cm")
+ggsave("~/Flanks/Images/f3pC_2.svg", plot = pp, height = 3, width = 8.7, units = "cm", dev = svglite)
 ```
 
 ## Panel D: Mononuclotide model vs NN hexbin scatter
@@ -547,10 +554,10 @@ model_outputs <- data %>%
 # Write model results to text file
 write.table(model_outputs, "~/Google\ Drive/Flanks_data/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
 ```
+
 ```{r}
 simple_model_data <- model_outputs %>% 
-  ungroup() %>% 
-  unite(flank, X01:X10, sep = "") %>%
+  ungroup() %>%
   rename(ddG = scaled_ddG) %>% 
   select(flank, ddG, .fitted, model, dataset) %>% 
   mutate(model = ifelse(model == "mono-nucleotide",
@@ -571,7 +578,7 @@ F3D = ggplot(simple_model_data %>% filter(model == "mononucleotide"), aes(x = .f
   presentation +
   theme(legend.key.size = unit(0.25, "cm"))
 
-ggsave("~/Flanks/Images/f3pD.svg", F3D, width = 10, height = 6, units = "cm")
+ggsave("~/Flanks/Images/f3pD.svg", F3D, width = 8.7, height = 4.5, units = "cm", dev = svglite)
 ```
 
 # Figure 4:
@@ -589,16 +596,21 @@ F4A = ggplot(simple_model_data %>% filter(model != "mononucleotide"), aes(x = .f
   presentation +
   theme(legend.key.size = unit(0.25, "cm"))
 
-ggsave("~/Flanks/Images/f4pA.svg", F4A, width = 10, height = 6, units = "cm")
+ggsave("~/Flanks/Images/f4pA.svg", F4A, width = 10, height = 6, units = "cm", dev = svglite)
 ```
 
 ## Panel B: pareto plot
 ```{r}
+training_data <- fread("~/Google Drive/Flanks_data/train_seqs.txt", header = FALSE) %>%
+  rename(flank = V1)
+
+colPal = brewer.pal(9,"Set1")
+
 corOut = 
   model_outputs %>% 
   tbl_df() %>% 
   select(flank, .fitted, protein, model,scaled_ddG) %>% 
-  anti_join(.,training_data) %>% 
+  anti_join(., training_data) %>% 
   group_by(protein, model) %>% 
   summarise(r2 = cor(.fitted,scaled_ddG)^2) %>%
   ungroup() %>% 
@@ -615,15 +627,19 @@ corOut =
 F4B = ggplot(corOut) +
   presentation + 
   theme(aspect.ratio = 1,
-        axis.text.x = element_text(angle = 45, vjust = 0.9, hjust = 1)) +
-  geom_bar(aes(model, improve), stat = "identity") +
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.key.size = unit(0.25, "cm"),
+        legend.title = element_blank()) +
+  geom_bar(aes(model, improve, fill = model), stat = "identity") +
   geom_point(aes(model, r2), size = 0.25) +
   geom_line(aes(model, r2, group = protein), size = 0.25) +
   facet_grid(protein ~ .) +
+  scale_fill_brewer(palette = "Set1") +
   ylab(expression(bold(paste("Pearson's ",italic(r)^"2")))) +
   xlab("")
 
-ggsave("~/Flanks/Images/f4pB.svg", F4B, width = 10, height = 6, units = "cm")
+ggsave("~/Flanks/Images/f4pB.svg", F4B, width = 10, height = 6, units = "cm", dev = svglite)
 ```
 
 ## Panel C: B2 bomber of Cbf1
@@ -722,6 +738,7 @@ lassoPlot = foreach(j = c("pho4","cbf1"), .combine = "rbind")%do%{
 
 write.table(lassoPlot, "~/Google\ Drive/flanks_data/lassoPlot.txt", col.names = T, row.names = F, quote = F, sep = "\t")
 ```
+
 ```{r}
 labelDf2 = 
   fread("~/Google\ Drive/flanks_data/lassoPlot.txt", header = T) %>%
@@ -740,11 +757,13 @@ labelDf2 =
   ungroup() %>% 
   select(protein,flank,id,colVal,feature) %>% 
   left_join(.,data.frame(id = c(1:4,4:1), yPos = c(0.8,0.6,0.4,0.2,-0.5,-0.7,-0.9,-1.1), colVal = c(1,1,1,1,-1,-1,-1,-1))) %>% 
-  mutate(feature = factor(feature, levels = c("mononucleotide","dinucleotide")))
+  mutate(feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
+  filter(protein == "Cbf1")
 
 lassoPlot2 = 
   left_join(fread("~/Google\ Drive/flanks_data/lassoPlot.txt", header = T), labelDf2) %>% 
-  mutate(colVal = ifelse(is.na(colVal),0,colVal)) %>% 
+  mutate(colVal = ifelse(is.na(colVal),0,colVal),
+         feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
   tbl_df() %>% 
   filter(protein == "Cbf1")
 
@@ -765,11 +784,48 @@ F4D = ggplot(lassoPlot2) +
   facet_wrap(~feature, nrow = 1) +
   ylim(c(-1.2,0.9))
 
-ggsave("~/Flanks/Images/f4pD.svg", plot = F4D, height = 5, width = 17, units = "cm")
+ggsave("~/Flanks/Images/f4pD.svg", plot = F4D, height = 5, width = 17, units = "cm", dev = svglite)
 ```
 
 # Figure 5:
 ## Panel A: ChIP scatter
+```{r}
+scaledNN = 
+  countsNN_scaled %>% 
+  select(flank, protein, scaled_dG, scaled_ddG) %>% 
+  mutate(kd = exp(scaled_dG/0.593)*1E9,
+         kd = round(kd,0))
+
+chip.data = 
+  tbl_df(read.csv(file = "~/Google\ Drive/Flanks_data/molcel3915mmc2.csv", header = T)) %>%
+  filter(Alignability == 1) %>%
+  select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
+
+chipDat =
+  inner_join(chip.gen.full %>% gather(protein,occ,pho4,cbf1), scaledNN) %>%
+  mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
+         protein = factor(protein, levels = c("Pho4","Cbf1")))
+
+F5A = ggplot(chipDat, aes(kd, occ)) +
+  presentation +
+  theme(aspect.ratio = 1,
+        legend.key.size = unit(0.2,"cm"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  geom_point(size = 0.01) +
+  ylab("ChIP Enrichment") +
+  xlab(expression(bold(paste("Sequencing K"[d], ", nM")))) +
+  facet_grid(. ~ protein) +
+  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))), 
+                        low = "#0057E7", 
+                        high = "#D62D20", 
+                        mid = "gray90", 
+                        midpoint = 0,
+                        limit = c(min(scaledNN$scaled_ddG),max(scaledNN$scaled_ddG))) +
+  scale_x_log10()
+
+ggsave("~/Flanks/Images/f5pA.svg", plot = F5A, height = 5, width = 8.7, units = "cm", dev = svglite)
+```
+
 ## Panel B: ChiP overlay
 ```{r}
 shockDf = 
@@ -777,94 +833,42 @@ shockDf =
             fread(paste0("~/Google\ Drive/Flanks_data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df()
 
-# join NN results with titration data
-nnCor = 
-  left_join(std_kd %>% select(flank,stdE,protein), shockDf %>% select(flank,ddG,cc,t,protein))
-
-# lm to extract linear equation
-slopeDf = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
-  iSlice = nnCor %>% filter(protein == i)
-  mod = lm(stdE ~ ddG, iSlice)
-  tidy(mod) %>% 
-    mutate(term = ifelse(term == "(Intercept)","int","slope")) %>%
-    select(term,estimate) %>%
-    spread(term,estimate) %>%
-    mutate(protein = i)
-}
-
-nnfitCor = 
-  left_join(shockDf,slopeDf) %>%
-  mutate(ddG = (ddG*slope)) %>% #only scale, no offset
-  select(-int,-slope) %>%
-  group_by(cc) %>% 
-  mutate(meanval = mean(ddG)) %>%
-  ungroup()
-
 overlayDf = 
-  left_join(nnfitCor %>% select(flank,ddG,t,cc,protein),chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
+  left_join(shockDf,chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1"))) %>% 
   group_by(protein) %>% 
   mutate(relOcc = occ/max(occ, na.rm = T)) %>% 
   ungroup()
 
-# circle plot (no ChIP)
-p1 = ggplot(overlayDf) +
-  geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  coord_polar() +
-  scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
-  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
-  theme(aspect.ratio = 1, 
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        axis.line = element_blank(),
-        axis.ticks = element_blank(),
-        legend.position = "none") +
-  facet_wrap(~ protein, nrow = 1)
-
-ggsave("~/Flanks/Images/f5pC1.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
-
 # circle plot (only ChIP)
-p1 = ggplot(overlayDf) +
+f5pB = ggplot(overlayDf) +
   theme_bw() +
   geom_point(aes(t,cc,size=relOcc,color=ddG)) +
   coord_polar() +
-  scale_size_continuous("ChIP enrichment", range = c(0.01, 2.5)) +
-  scale_color_gradient2("ddG, kcal/mol",low = "#0057E7", high = "#D62D20", mid = "white") +
+  scale_size_continuous(expression(bold("ChIP enrichment")), range = c(0.01, 2.5)) +
+  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))),
+                        low = "#0057E7", 
+                        high = "#D62D20", 
+                        mid = "gray90", 
+                        midpoint = 0,
+                        breaks = -2:1) +
   theme(aspect.ratio = 1, 
         axis.title = element_blank(),
         axis.text = element_blank(),
         axis.line = element_blank(),
         axis.ticks = element_blank(),
-        legend.position = "none",
         panel.border = element_blank(),
         panel.grid.minor.x = element_blank(),
         panel.grid.major.x = element_blank(),
-        panel.grid.major.y = element_line(size = 0.1, color = "gray40")) +
+        panel.grid.major.y = element_line(size = 0.1, color = "gray40"),
+        legend.key.size = unit(0.3,"cm")) +
   scale_y_continuous(breaks = 0:10) +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("~/Flanks/Images/f5pC2.png", plot = p1, height = 12, width = 12, units = "cm", dpi = 600)
-
-# legend print
-pLeg = ggplot(overlayDf) +
-  geom_point(aes(t,cc,color=ddG), size = 0.01) +
-  geom_point(aes(t,cc,size=relOcc,color=ddG)) +
-  coord_polar() +
-  scale_size_continuous(expression(bold("Relative ChIP\nenrichment")), range = c(0.01, 2.5)) +
-  scale_color_gradient2(expression(bold(paste(Delta,Delta,"G, kcal/mol"))),low = "#0057E7", high = "#D62D20", mid = "white") +
-  theme(aspect.ratio = 1,
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        axis.line = element_blank(),
-        axis.ticks = element_blank()) +
-  facet_wrap(~ protein, nrow = 1)
-
-ggsave("~/Flanks/Images/f5pCleg.png", plot = pLeg, height = 12, width = 12, units = "cm", dpi = 600)
+ggsave("~/Flanks/Images/f5pB.png", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600)
+ggsave("~/Flanks/Images/f5pB.svg", plot = f5pB, height = 15, width = 15, units = "cm", dpi = 600, dev = svglite)
 ```
-
-
-
 
 ########
 ########
