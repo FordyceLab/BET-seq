@@ -1,4 +1,5 @@
 *.DS_Store
+*.Rhistory
 
 # Figures paths
 figures/eps
