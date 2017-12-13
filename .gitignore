@@ -1,1 +1,5 @@
 *.DS_Store
+
+# Figures paths
+figures/eps
+figures/eps.zip
