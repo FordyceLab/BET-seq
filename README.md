@@ -1,0 +1,3 @@
+# Flanking sequence analysis repository
+
+This repository contains all the code and data to perform the analysis described in the Le, *et al.* manuscript describing MITOMI sequencing-based analysis of Pho4 and Cbf1 core binding site flanking sequences. This manuscript can be found on bioRxiv [here](https://www.biorxiv.org/content/early/2017/09/26/193904.article-metrics) and is currently being revised for resubmission to PNAS.
