@@ -3,3 +3,6 @@
 # Figures paths
 figures/eps
 figures/eps.zip
+
+# Data directory
+data/
