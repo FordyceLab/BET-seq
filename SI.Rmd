@@ -152,6 +152,64 @@ corr_val %>%
 
 
 ##############################
+```{r}
+crossallDat %>% 
+  group_by(protein, key) %>% 
+  summarise(r2 = cor(stdE,value)^2) %>% 
+  ungroup() %>% 
+  mutate(protein = c(rep("Pho4",2),rep("Cbf1",2)),
+         key = c("in","mod","in","mod")) %>% 
+  xtable(digits = 3) %>% 
+  print()
+```
+
+## Table S5: dinucleotide correlation results
+```{r}
+scaleDat %>% 
+  distinct() %>% 
+  group_by(protein, model) %>% 
+  summarise(r2 = cor(.fitted,stdE)^2) %>% 
+  ungroup() %>% 
+  mutate(protein = c(rep("Pho4",3),rep("Cbf1",3)),
+         model = rep(c("Mononucleotide","Nearest neighbor","Dinucleotide"),2),
+         r2 = round(r2, digits = 3)) %>% 
+  xtable(digits = 3) %>% 
+  print()
+```
+
+## Table S6: epistasis binding results
+```{r}
+fread("~/Flank_seq/data/stdEpistasis1.csv", header = T) %>%
+  tbl_df() %>%
+  mutate(Sequence = gsub(" ","",Sequence)) %>% # remove white space
+  mutate(Sequence = substring(Sequence,16,31), Sequence = gsub("CACGTG","_",Sequence)) %>% # isolate flanks
+  select(flank = Sequence, estimate, std.error) %>%
+  mutate(kd = estimate/1E9,
+         stdE.err = (std.error/estimate)*0.593,
+         stdE = log(kd) * 0.593,
+         target = flank) %>% 
+  select(Sequence = flank, estimate, std.error) %>% 
+  mutate(estimate = round(estimate), std.error = round(std.error)) %>% 
+  arrange(estimate) %>% 
+  bind_rows(.,pho4EpiCurves %>% 
+              group_by(flank) %>% 
+              summarise(estimate = mean(estimate), std.error = mean(std.error)) %>% 
+              filter(flank == "negative control") %>% 
+              rename(Sequence = flank)) %>% 
+  xtable(digits = 0) %>% 
+  print()   
+```
+
+##Table S7: titration binding sequences
+```{r}
+fread("~/Flank_seq/data/titrationseq_mono.txt", header = F) %>% 
+  rename(Index = V1, Sequence = V2) %>% 
+  mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
+         Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
+  select(Sequence) %>% 
+  xtable() %>% 
+  print()
+```
 
 
 ## Figure S1A: Monte Carlo parameter grid
@@ -854,4 +912,48 @@ ggsave("~/Flanks/Images/S17.eps", plot = S17, height = 10, width = 11.5, units =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Neural network training curves
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+cbf1_training <- read.table("~/Flank_seq/data/cbf1_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Cbf1")
+
+pho4_training <- read.table("~/Flank_seq/data/pho4_model.acc", header = TRUE) %>% 
+  gather(dataset, RMSE, -epoch) %>% 
+  mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
+         protein = "Pho4")
+
+training_data <- bind_rows(cbf1_training, pho4_training) %>% 
+  mutate(protein = factor(protein, levels = c("Pho4", "Cbf1")))
+
+ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
+  facet_grid(protein~., scales = "free_y") +
+  geom_line() + 
+  presentation +
+  scale_color_manual(values = c("red", "blue"))
+
+ggsave("~/Downloads/training_curves.eps", height = 5, width = 5)
+
+ggsave("~/Flanks/Images/SX.svg", height = 5, width = 5)
+```
 
