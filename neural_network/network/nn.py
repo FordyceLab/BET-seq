@@ -17,6 +17,11 @@ dtype = torch.cuda.FloatTensor
 class LBRD(nn.Module):
     """
     Create a sandwich layer for linear-batchnorm-ReLU-dropout
+
+    Args:
+    - input_dim (int) - input size to linear layer
+    - output_dim (int) - output size of linear layer
+    - dropout (float) - dropout probability for layer
     """
     def __init__(self, input_dim, output_dim, dropout):
         super(LBRD, self).__init__()
@@ -34,6 +39,15 @@ class LBRD(nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
         
     def forward(self, x):
+        """
+        Perform forward pass
+
+        Args:
+        - x (array) - input to layer
+
+        Returns:
+        - layer output
+        """
         
         # Forward pass on x
         x = self.fc(x)
@@ -61,8 +75,6 @@ class Net(nn.Module):
     def forward(self, x):
         
         # Forward pass
-#        if self.training:
-#            x += Variable(torch.zeros(x.size()).normal_(0, 0.25).cuda())
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
@@ -81,11 +93,26 @@ def en_loss(output, target, lambda_val=0.5):
     Returns:
     - elastic net loss
     """
+
     MSE_fn = torch.nn.MSELoss(size_average=False)
     L1_fn = torch.nn.L1Loss(size_average=False)
     return lambda_val * MSE_fn(output, target) + (1 - lambda_val) * L1_fn(output, target)
 
 def weighted_MSE(output, target, in_count, bound_count, weighted=True, mean=True):
+    """
+    Poisson-error weighted mean squared error loss function
+    
+    Args:
+    - target (array) - array of target values
+    - in_count (array) - input library read counts
+    - bound_count (array) - input library read counts
+    - weighted (bool) - whether to weight the loss (default = True)
+    - mean (bool) - return mean vs. summed loss (default = True)
+    
+    Returns:
+    - loss
+    """
+
     count_frac_error = ((in_count.sqrt() / in_count)**2 +
                         (bound_count.sqrt() / bound_count)**2).sqrt()
     
@@ -109,16 +136,14 @@ def train(model, train_loader, val_loader, complete_loader, optimizer):
     
     Args:
     - model (Net) - model to train
-    - epoch (int) - epoch number
     - train_loader (DataLoader) - training data wrapped in DataLoader class
     - val_loader (DataLoader) - validation data wrapped in DataLoader class
     - complete_loader (DataLoader) - sequences to be predicted wrapped in DataLoader class
     arising from SingleTensorDataset
     - optimizer (Optim) - optimizer for training
-    - lambda (float) - value between 0 and 1 that serves as the elastic net balancer
 
     Returns:
-    - validation loss
+    - tuple of the training and validation loss values
     """
     
     # Put the model in training mode
@@ -167,7 +192,6 @@ def test(model, loader):
     Args:
     - model (Net) - model to test
     - loader (DataLoader) - DataLoader with examples and targets
-    - lambda_val (float) - value between 0 and 1 that serves as the elastic net balancer
     
     Returns:
     - test set average loss
@@ -207,6 +231,10 @@ def test(model, loader):
 def show_all_preds(model, loader):
     """
     Plot predicted values for all sequences
+
+    Args:
+    - model (Net) - model to test
+    - loader (DataLoader) - DataLoader with examples and targets
     """
     
     # Set model into evaluation mode
@@ -241,12 +269,33 @@ def show_all_preds(model, loader):
     
 def train_nn(train_loader, val_loader, prediction_loader, acc_file,
              max_epochs=100, early_stop=5, lr=1e-3, L2=0.01, min_improvement=1e-4):
+    """
+    Train a model
     
-    # Istantiate the network and shift it to the GPU
+    Args:
+    - train_loader (DataLoader) - training data wrapped in DataLoader class
+    - val_loader (DataLoader) - validation data wrapped in DataLoader class
+    - prediction_loader (DataLoader) - sequences to be predicted wrapped in
+        DataLoader class
+    - acc_file (str) - path to file to use for logging training and validation
+        losses
+    - max_epochs (int) - maximum number of training epochs (default = 100)
+    - early_stop (int) - number epochs to allow training without improvement on
+        validation dataset (default = 5)
+    - lr (float) - learning rate (default = 1e-3)
+    - L2 (float) - L2 weight decay (default = 0.01)
+    - min_improvement (float) - minimum improvement for new parameters to be
+        considered "better" than last epoch (default = 1e-4)
+
+    Returns:
+    - model with best parameters
+    """
+    
+    # Instantiate the network and shift it to the GPU
     model = Net()
     model.cuda()
 
-    # Intstantiate and SGD optimizer
+    # Instantiate and SGD optimizer
     optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=L2)
     next_lr = lr / 10
 
@@ -291,16 +340,34 @@ def train_nn(train_loader, val_loader, prediction_loader, acc_file,
     return model
 
 def make_predictions(parameter_file, prediction_loader):
+    """
+    Load a model using stored parameters and output predictions
+
+    Args:
+    - parameter_file (str) - Path to parameter file
+    - prediction_loader (str) - DataLoader containing input to be predicted
+    """
+
+    # Instantiate the model, load the parameters, and place on GPU
     model = Net()
     model.load_state_dict(torch.load(parameter_file))
     model = model.cuda()
+
+    # Switch model to evaluation mode
     model.eval()
+
+    # Create an array for the output
     complete_output = np.array([])
+
+    # Predict all the input data
     for data in prediction_loader:
         data = Variable(data, volatile=True).type(dtype)
         output = model(data).cpu().data.numpy()
         complete_output = np.append(complete_output, output)
     
+    # Center the predictions since mean of ddG distribution is 0 by definition
     centered_complete_output = complete_output - np.mean(complete_output)
+
+    # Return the predicted values
     return(centered_complete_output)
 
