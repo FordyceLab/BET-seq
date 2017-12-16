@@ -53,14 +53,14 @@ cor(longCounts %>% select(-flank) %>% as.matrix(), use = "complete.obs")^2 %>%
 
 ## Table S3: Pho4 Kd results
 ```{r}
-right_join(fread("data/std_kd_cbf1.csv") %>% 
+right_join(fread("data/Manuscript_Data/std_kd_cbf1.csv") %>% 
       select(Sequence,cbf1 = estimate, cbf1err = std.error) %>% 
       mutate(core = substr(Sequence,23,28),
              Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
              Sequence = ifelse(core == "CAGCTG", "negative control", Sequence),
              cbf1 = round(cbf1),
              cbf1err = round(cbf1err)),
-      fread("data/std_kd_pho4.csv") %>% 
+      fread("data/Manuscript_Data/std_kd_pho4.csv") %>% 
       select(Sequence,pho4 = estimate, pho4err = std.error) %>% 
       mutate(core = substr(Sequence,23,28),
              Sequence = paste(substr(Sequence,17,21),substr(Sequence,30,34),sep="_"),
@@ -76,7 +76,7 @@ right_join(fread("data/std_kd_cbf1.csv") %>%
 ## Table S4: NN-derived linear model correlation to NN-derived individual ddG
 ```{r}
 # Held-out r^2
-training_data <- fread("data/train_seqs.txt", header = FALSE) %>% 
+training_data <- fread("data/Manuscript_Data/train_seqs.txt", header = FALSE) %>% 
   rename(flank = V1)
 
 model_outputs %>%
@@ -95,7 +95,7 @@ model_outputs %>%
 
 ## Table S5: Cross correlation of mononucleotide model coefficients
 ```{r}
-training_data <- fread("data/train_seqs.txt", header = FALSE) %>% 
+training_data <- fread("data/Manuscript_Data/train_seqs.txt", header = FALSE) %>% 
   rename(flank = V1)
 
 lmCross = foreach(i = counts.df$protein %>% unique(), .combine = "rbind")%do%{
@@ -180,7 +180,7 @@ scaleDat %>%
 
 ## Table S6: epistasis binding results
 ```{r}
-fread("data/stdEpistasis1.csv", header = T) %>%
+fread("data/Manuscript_Data/stdEpistasis1.csv", header = T) %>%
   tbl_df() %>%
   mutate(Sequence = gsub(" ","",Sequence)) %>% # remove white space
   mutate(Sequence = substring(Sequence,16,31), Sequence = gsub("CACGTG","_",Sequence)) %>% # isolate flanks
@@ -203,7 +203,7 @@ fread("data/stdEpistasis1.csv", header = T) %>%
 
 ##Table S7: titration binding sequences
 ```{r}
-fread("~/Flank_seq/data/titrationseq_mono.txt", header = F) %>% 
+fread("data/Manuscript_Data/titrationseq_mono.txt", header = F) %>% 
   rename(Index = V1, Sequence = V2) %>% 
   mutate(Sequence = gsub("CAATACACTGTTATC ","",Sequence),
          Sequence = gsub(" CTACTCGTTCGGTTATCCGGCGGTATGAC","",Sequence)) %>% 
@@ -216,7 +216,7 @@ fread("~/Flank_seq/data/titrationseq_mono.txt", header = F) %>%
 ```{r, warning=FALSE, message=FALSE, fig.width=10, fig.height=10}
 # read data
 returnDf2 =
-  fread("data/modelSimulation.txt", header = T) %>%
+  fread("data/Manuscript_Data/modelSimulation.txt", header = T) %>%
   group_by(libSize, ddG, readTotal) %>%
   mutate(r2 = r2/seqObsPct,
          medr2 = median(r2, na.rm =T), 
@@ -329,12 +329,12 @@ ggsave("images/S3.eps",S3, height = 5, width = 10, units = "cm")
 
 ## Figure S4: Neural network training curves
 ```{r}
-cbf1_training <- read.table("data/cbf1_model.acc", header = TRUE) %>% 
+cbf1_training <- read.table("data/Manuscript_Data/cbf1_model.acc", header = TRUE) %>% 
   gather(dataset, RMSE, -epoch) %>% 
   mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
          protein = "Cbf1")
 
-pho4_training <- read.table("data/pho4_model.acc", header = TRUE) %>% 
+pho4_training <- read.table("data/Manuscript_Data/pho4_model.acc", header = TRUE) %>% 
   gather(dataset, RMSE, -epoch) %>% 
   mutate(dataset = ifelse(dataset == "train_acc", "training", "validation"),
          protein = "Pho4")
@@ -378,13 +378,13 @@ ggsave("images/S5.eps", S5, height = 5, width = 7, units = "cm")
 ```{r}
 colPal = colorRampPalette(c("#0057E7", "#D62D20"))(32)
 pho4Curves = 
-  fread("data/pho4BindingCurves.csv", sep = ",", header = T) %>%
+  fread("data/Manuscript_Data/pho4BindingCurves.csv", sep = ",", header = T) %>%
   tbl_df() %>%
   rename(ID = Onum, fBound = R, Conc = Ch) %>%
   mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
   createCurves(.) %>%
   mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("data/seq2ID_pho4.txt", header = F) %>%
+  left_join(.,fread("data/Manuscript_Data/seq2ID_pho4.txt", header = F) %>%
     unite("flank",V3,V5,sep="_") %>%
     select(index = V1, flank) %>%
     mutate(index = paste("ID",index,sep=""))) %>%
@@ -408,13 +408,13 @@ ggsave("images/S6A.png", plot = S6A, height = 17, width = 13, units = "cm")
 ggsave("images/S6A.eps", plot = S6A, height = 17, width = 13, units = "cm")
 
 cbf1Curves = 
-  fread("data/cbf1BindingCurves.csv", sep = ",", header = T) %>%
+  fread("data/Manuscript_Data/cbf1BindingCurves.csv", sep = ",", header = T) %>%
   tbl_df() %>%
   rename(ID = Onum, fBound = R, Conc = Ch) %>%
   mutate(index = paste("ID",ID,sep=""), index = factor(index, paste0("ID",1:32))) %>%
   createCurves(.) %>%
   mutate(index = factor(index, levels = paste0("ID",1:32))) %>%
-  left_join(.,fread("data/seq2ID_cbf1.txt", header = F) %>%
+  left_join(.,fread("data/Manuscript_Data/seq2ID_cbf1.txt", header = F) %>%
     unite("flank",V3,V5,sep="_") %>%
     select(index = V1, flank) %>%
     mutate(index = paste("ID",index,sep=""))) %>%
@@ -441,7 +441,7 @@ ggsave("images/S6B.eps", plot = S6B, height = 17, width = 13, units = "cm")
 ## Figure S7: Histogram of core vs flank
 ```{r}
 coreDf = 
-  fread("data/core_mutation_ddG.txt", header = T) %>% 
+  fread("data/Manuscript_Data/core_mutation_ddG.txt", header = T) %>% 
   tbl_df() %>% 
   mutate(type = "core") %>% 
   bind_rows(.,countsNN_scaled %>%
@@ -528,7 +528,7 @@ ggsave("images/S8.eps", plot = S8, height = 10, width = 10, units = "cm")
 
 ## Figure S9: Cross replication of mononucleotide model coefficients
 ```{r}
-training_data <- fread("data/train_seqs.txt", header = FALSE) %>% 
+training_data <- fread("data/Manuscript_Data/train_seqs.txt", header = FALSE) %>% 
   rename(flank = V1)
 
 lmCross = foreach(i = counts.df$protein %>% unique(), .combine = "rbind")%do%{
@@ -568,7 +568,7 @@ ggsave("images/S9.eps", plot = S9, height = 10, width = 10, units = "cm")
 ## Figure S10: eGFP control binding preference
 ```{r}
 # additive model plots
-outAdd = addMotif(fread("data/countsGF.txt", header = T) %>% 
+outAdd = addMotif(fread("data/Manuscript_Data/countsGF.txt", header = T) %>% 
                     na.omit() %>% 
                     filter(!is.infinite(ddG)) %>%
                     group_by(rep) %>%
@@ -607,8 +607,8 @@ ggsave("images/S10.eps", plot = S10, height = 5, width = 5, units = "cm")
 
 ## Figure S11: Cbf1 + Pho4 LASSO 10-fold CV confidence interval + extracted coefficients table
 ```{r}
-cvLasso = bind_rows(fread("data/lassoCV_pho4.txt", header = T) %>% mutate(protein = "Pho4"),
-                    fread("data/lassoCV_cbf1.txt", header = T) %>% mutate(protein = "Cbf1")) %>%
+cvLasso = bind_rows(fread("data/Manuscript_Data/lassoCV_pho4.txt", header = T) %>% mutate(protein = "Pho4"),
+                    fread("data/Manuscript_Data/lassoCV_cbf1.txt", header = T) %>% mutate(protein = "Cbf1")) %>%
   mutate(protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # CV plot
@@ -627,13 +627,13 @@ ggsave("images/S11.eps", plot = S11, height = 7, width = 7, units = "cm")
 
 ## INCLUDE CSV: LASSO
 ```{r}
-write.table(cvLasso, "data/SuppData/supp_data1.csv", sep = ",", row.names = F, col.names = T, quote = F)
+write.table(cvLasso, "data/Manuscript_Data/cv_lasso.csv", sep = ",", row.names = F, col.names = T, quote = F)
 ```
 
 ## Figure S12: Cbf1 + Pho4 LASSO magnitudes
 ```{r}
-dfVar = bind_rows(fread("data/dfVar_cbf1.txt", header =T) %>% mutate(protein = "Cbf1"),
-                  fread("data/dfVar_pho4.txt", header =T) %>% mutate(protein = "Pho4")) %>%
+dfVar = bind_rows(fread("data/Manuscript_Data/dfVar_cbf1.txt", header =T) %>% mutate(protein = "Cbf1"),
+                  fread("data/Manuscript_Data/dfVar_pho4.txt", header =T) %>% mutate(protein = "Pho4")) %>%
   group_by(flank) %>%
   mutate(pass = findSplitNN(flank)) %>% 
   filter(pass == T) %>%
@@ -688,12 +688,12 @@ refs =
               select(flank, protein, stdE) %>% 
               mutate(source = "present",
                      protein = ifelse(protein == "pho4", "Pho4", "Cbf1")),
-            fread("data/Nat_gen_titration.txt", header = T) %>% 
+            fread("data/Manuscript_Data/Nat_gen_titration.txt", header = T) %>% 
               tbl_df() %>% 
               select(flank,stdE = Maerkl_ddG) %>% 
               mutate(protein = "Pho4",
                      source = "Rajkumar et al."),
-            fread("data/Science_titration.txt", header = F) %>% 
+            fread("data/Manuscript_Data/Science_titration.txt", header = F) %>% 
               mutate(flank = paste0("ATTTT",V1,"TT"),
                      source = "Maerkl et al.") %>% 
               select(flank,protein=V3, stdE = V2, source)) %>% 
@@ -755,7 +755,7 @@ ggsave("images/S13.eps", plot = S13, height = 12, width = 8, units = "cm")
 ## Figure S14: Pho4 transcription rate and induction
 ```{r}
 rateVal = 
-  fread("data/transcriptionRate.txt", header = F, sep = "\t", stringsAsFactors = F) %>%
+  fread("data/Manuscript_Data/transcriptionRate.txt", header = F, sep = "\t", stringsAsFactors = F) %>%
   transmute(ID = V1, seq = V2, rate = V3, std.error = V4) %>%
   mutate(flank = paste0(substring(seq,1,5),substring(seq,12,16))) %>%
   left_join(., countsNN_scaled %>% filter(protein == "pho4") %>% select(flank, scaled_dG))
@@ -773,7 +773,7 @@ p1 = ggplot(rateVal, aes(scaled_dG, rate)) +
   xlab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
 
 expVal = 
-  fread("data/NARexpression.txt", header = T, sep = "\t") %>%
+  fread("data/Manuscript_Data/NARexpression.txt", header = T, sep = "\t") %>%
   mutate(flank = paste("ATC",up,down,"TGC",sep = ""),
          induction = c0/c10000) %>%
   select(flank,induction) %>%
@@ -799,8 +799,8 @@ ggsave("images/S14.eps", plot = S14, height = 5, width = 8, units = "cm")
 ## Figure S15: landscapes
 ```{r}
 shockDf = 
-  bind_rows(fread(paste0("data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-            fread(paste0("data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
+  bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+            fread(paste0("data/Manuscript_Data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df() %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1")))
@@ -835,8 +835,8 @@ ggsave("images/S15.png", plot = S15, height = 8, width = 15, units = "cm", dpi =
 ## S16: landscape density
 ```{r}
 shockDf = 
-  bind_rows(fread(paste0("data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-            fread(paste0("data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
+  bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+            fread(paste0("data/Manuscript_Data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df() %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),
          protein = factor(protein, levels = c("Pho4","Cbf1")))
@@ -861,8 +861,8 @@ ggsave("images/S16.eps", plot = S16, height = 15, width = 15, units = "cm", dpi 
 ## S17: Hamming distance summary
 ```{r}
 overlayDf = 
-  left_join(bind_rows(fread(paste0("data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-                      fread(paste0("data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
+  left_join(bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+                      fread(paste0("data/Manuscript_Data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
                       tbl_df(),
             chip.gen.full %>% select(flank,pho4,cbf1) %>% gather(protein,occ,pho4,cbf1)) %>% 
   mutate(protein = ifelse(protein == "pho4","Pho4","Cbf1"),

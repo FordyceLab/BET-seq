@@ -39,7 +39,7 @@ foreach(prot = c("pho4","cbf1"))%dopar%{
     mutate(t = seq(0,360-(360/n()),length.out = n()) * pi / 180) %>%
     ungroup()
 
-  write.table(shockDf, paste0("data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
+  write.table(shockDf, paste0("data/Manuscript_Data/shock_",prot,".txt"), col.names = T, row.names = F, quote = F, sep = "\t")
 }
 ```
 
@@ -49,7 +49,7 @@ prot = "pho4"
 ###
 
 shockDf = 
-  fread(paste0("data/shock_",prot,".txt"), header = T) %>% 
+  fread(paste0("data/Manuscript_Data/shock_",prot,".txt"), header = T) %>% 
   mutate(t = t/2) %>% #create hemisphere
   tbl_df() %>%
   bind_rows(data.frame(flank = NA, ddG = NA, cc = 11, t = 2*pi))
@@ -98,7 +98,7 @@ testCount = lapply(list(iVal,jVal),function (x) x %>% length()) %>%
 
 # read-in data
 readDat2 =
-  fread("data/spec_R3_2.txt", header = F) %>% #R3.2 (only from Expt 1)
+  fread("data/Manuscript_Data/spec_R3_2.txt", header = F) %>% #R3.2 (only from Expt 1)
   tbl_df() %>%
   rename(Seq = V1, True_Bound = V2, True_Unbound = V3, True_Ratio = V4) %>%
   mutate(True_Bound_P = True_Bound / sum(True_Bound),
@@ -167,12 +167,12 @@ dsPWM = foreach(i = iVal, .combine = "rbind")%dopar%{ # sampling depth split equ
 } %>% gather(key,value,c(r2seq,r2pwm)) %>% 
   mutate(acc= ifelse(key == "r2seq", value * seqObsPct, value))
 
-write.table(dsPWM, "data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(dsPWM, "data/Manuscript_Data/dspwmSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 
 
 ```{r}
-dsPWM = fread("data/dspwmSimulation.txt", header = T)
+dsPWM = fread("data/Manuscript_Data/dspwmSimulation.txt", header = T)
 
 colPal = brewer.pal(9,"Set1")
 p1 = ggplot(dsPWM %>% filter(readTotal <= 1E6)) +
@@ -249,12 +249,12 @@ returnDf =
     }
   }
 
-write.table(returnDf, "modelSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(returnDf, "data/Manuscript_Data/modelSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 
 ```{r}
 returnDf2 =
-  fread("data/modelSimulation.txt", header = T) %>%
+  fread("data/Manuscript_Data/modelSimulation.txt", header = T) %>%
   mutate(r2 = r2/seqObsPct) %>% 
   gather(key,value,r2,seqObsPct) %>% 
   tbl_df() %>%
@@ -293,7 +293,7 @@ ggsave("images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm", d
 ```{r, eval=FALSE}
 # FYI spec-seq = 5.4kt (3.2 kcal/mol) affinity range
 readDat =
-  fread("data/Stormo_All_Expts.txt", header = T) %>%
+  fread("data/Manuscript_Data/Stormo_All_Expts.txt", header = T) %>%
   tbl_df() %>%
   rename(Seq = Sequence, True_Bound = Bound, True_Unbound = Unbound, True_Ratio = Bound.Unbound) %>%
   mutate(index = c(rep(1,256), rep(2,256), rep(3,1024), rep(4,1024))) %>% #R2,R4,R3.1,R3.2 (only from Expt 1)
@@ -353,10 +353,10 @@ dsDat = foreach(i =iVal, .combine = "rbind")%do%{ # sampling depth split equally
         }
 } %>% tbl_df()
 
-write.table(dsDat, "data/downsampleSimulation.txt", col.names = T, row.names = F, quote = F)
+write.table(dsDat, "data/Manuscript_Data/downsampleSimulation.txt", col.names = T, row.names = F, quote = F)
 ```
 ```{r}
-dsDat = fread("data/downsampleSimulation.txt", header = T) %>% 
+dsDat = fread("data/Manuscript_Data/downsampleSimulation.txt", header = T) %>% 
   filter(type == "ref_ddG") %>% 
   mutate(r2 = r2/seqObsPct) %>% 
   gather(key,value,seqObsPct,r2) %>% 
@@ -396,7 +396,7 @@ dsDat %>%
 ## Panel B: Histogram of core vs flank ddGs
 ```{r}
 coreDf = 
-  fread("data/core_mutation_ddG.txt", header = T) %>% 
+  fread("data/Manuscript_Data/core_mutation_ddG.txt", header = T) %>% 
   tbl_df() %>% 
   mutate(type = "core") %>% 
   bind_rows(.,countsNN_scaled %>%
@@ -469,8 +469,8 @@ ggsave("images/f3pC_1.svg", plot = p1, height = 4.5, width = 8.7, units = "cm", 
 ```{r}
 library(ggseqlogo)
 
-pwmList = list("Pho4" = fread("~/Google\ Drive/Flanks_data/pwm_pho4.txt", header = F) %>% as.matrix(),
-               "Cbf1" = fread("~/Google\ Drive/Flanks_data/pwm_cbf1.txt", header = F) %>% as.matrix())
+pwmList = list("Pho4" = fread("data/Manuscript_Data/pwm_pho4.txt", header = F) %>% as.matrix(),
+               "Cbf1" = fread("data/Manuscript_Data/pwm_cbf1.txt", header = F) %>% as.matrix())
 row.names(pwmList[["Pho4"]]) = c("A","C","G","T")
 row.names(pwmList[["Cbf1"]]) = c("A","C","G","T")
 
@@ -547,7 +547,7 @@ create_models <- function(data) {
 }
 
 # Read in and ajust the NN predicted ddG values
-data <- fread("data/scaled_nn_preds.txt") %>% 
+data <- fread("data/Manuscript_Data/scaled_nn_preds.txt") %>% 
   select(flank, protein, scaled_ddG) %>% 
   separate(flank, into=paste0("X", sprintf("%02d", 1:10)), sep = 1:9)
 
@@ -557,7 +557,7 @@ model_outputs <- data %>%
   do(create_models(.))
 
 # Write model results to text file
-write.table(model_outputs, "data/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+write.table(model_outputs, "data/Manuscript_Data/model_outputs.txt", row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ```{r}
@@ -606,7 +606,7 @@ ggsave("images/f4pA.svg", F4A, width = 10, height = 6, units = "cm", dev = svgli
 
 ## Panel B: pareto plot
 ```{r}
-training_data <- fread("data/train_seqs.txt", header = FALSE) %>%
+training_data <- fread("data/Manuscript_Data/train_seqs.txt", header = FALSE) %>%
   rename(flank = V1)
 
 colPal = brewer.pal(9,"Set1")
@@ -651,7 +651,7 @@ ggsave("images/f4pB.svg", F4B, width = 10, height = 6, units = "cm", dev = svgli
 
 ```{r}
 # Read in the count data from our experiments
-interaction_data <- fread("~/Flank_seq/data/scaled_nn_preds.txt") %>% 
+interaction_data <- fread("data/Manuscript_Data/scaled_nn_preds.txt") %>% 
   separate(flank, into = paste0("X", sprintf("%02d", 1:10)), sep = 1:9, remove = FALSE)
 
 # Define the function to get the mean residual multiplied by the scalar
@@ -815,12 +815,12 @@ y <- testDat %>% .$ddG
 # Perform LASSO regression
 fit.lasso=glmnet(x,y,alpha=1, intercept=FALSE, nlambda = 150) # no intercept, alpha = 1 for lasso, = 0 for ridge
 fitLasso = tidy(fit.lasso)
-write.table(fitLasso, paste0("data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(fitLasso, paste0("data/Manuscript_Data/lassoFit_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # 10-fold cross validation
 cv.lasso=cv.glmnet(x,y, intercept=FALSE, parallel = T)
 cvLasso = tidy(cv.lasso)
-write.table(cvLasso, paste0("data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(cvLasso, paste0("data/Manuscript_Data/lassoCV_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # Extract coefficients
 dfVar =
@@ -840,11 +840,11 @@ dfVar =
   mutate(space = (gregexpr("[A,C,G,T]", flank) %>% unlist() %>% diff() - 1) %>% sum(),
          elements = gregexpr("[A,C,G,T]", flank) %>% unlist() %>% length()) %>%
   ungroup()
-write.table(dfVar, paste0("data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
+write.table(dfVar, paste0("data/Manuscript_Data/dfVar_",protVal,".txt"), row.names = F, col.names = T, quote = F, sep = "\t")
 
 # LASSO plot
-fitLasso = bind_rows(fread(paste0("data/lassoFit_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-                     fread(paste0("data/lassoFit_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>% 
+fitLasso = bind_rows(fread(paste0("data/Manuscript_Data/lassoFit_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+                     fread(paste0("data/Manuscript_Data/lassoFit_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>% 
   separate(term,c("variable","base"),sep = "[.]") %>%
   mutate(dfrow = substring(variable, 4, nchar(variable)) %>% as.integer()) %>%
   group_by(estimate,lambda,dev.ratio,step) %>%
@@ -873,12 +873,12 @@ lassoPlot = foreach(j = c("pho4","cbf1"), .combine = "rbind")%do%{
              feature = ifelse(type == 1,"mononucleotide","dinucleotide"),
              feature = factor(feature, levels = c("mononucleotide","dinucleotide")))
 
-write.table(lassoPlot, "data/lassoPlot.txt", col.names = T, row.names = F, quote = F, sep = "\t")
+write.table(lassoPlot, "data/Manuscript_Data/lassoPlot.txt", col.names = T, row.names = F, quote = F, sep = "\t")
 ```
 
 ```{r}
 labelDf2 = 
-  fread("data/lassoPlot.txt", header = T) %>%
+  fread("data/Manuscript_Data/lassoPlot.txt", header = T) %>%
   filter(estimate != 0) %>% 
   group_by(protein, feature, flank) %>%
   mutate(maxLamdha = max(lambda)) %>% 
@@ -898,7 +898,7 @@ labelDf2 =
   filter(protein == "Cbf1")
 
 lassoPlot2 = 
-  left_join(fread("data/lassoPlot.txt", header = T), labelDf2) %>% 
+  left_join(fread("data/Manuscript_Data/lassoPlot.txt", header = T), labelDf2) %>% 
   mutate(colVal = ifelse(is.na(colVal),0,colVal),
          feature = factor(feature, levels = c("mononucleotide","dinucleotide"))) %>% 
   tbl_df() %>% 
@@ -934,7 +934,7 @@ scaledNN =
          kd = round(kd,0))
 
 chip.data = 
-  tbl_df(read.csv(file = "data/molcel3915mmc2.csv", header = T)) %>%
+  tbl_df(read.csv(file = "data/Manuscript_Data/molcel3915mmc2.csv", header = T)) %>%
   filter(Alignability == 1) %>%
   select(chr = CHR, loc = Location, pho4 = PHO4.Enrichment.No.Pi, cbf1 = Cbf1.Enrichemnt.No.Pi) 
 
@@ -966,8 +966,8 @@ ggsave("images/f5pA.svg", plot = F5A, height = 5, width = 8.7, units = "cm", dev
 ## Panel B: ChiP overlay
 ```{r}
 shockDf = 
-  bind_rows(fread(paste0("data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
-            fread(paste0("data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
+  bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
+            fread(paste0("data/Manuscript_Data/shock_cbf1.txt"), header = T) %>% mutate(protein = "cbf1")) %>%
   tbl_df()
 
 overlayDf = 
