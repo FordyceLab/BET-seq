@@ -1,0 +1,311 @@
+---
+title: "EnergeticRangeAnalysis"
+author: "Tyler Shimko"
+date: "12/4/2017"
+output: html_document
+---
+
+# MITOMI-seq energetic range analysis
+
+## Overview
+
+Dynamic range is a primary concern for assays seeking to estimate binding energies for large libraries of substrates. In the case of libraries probing the effects of sequences flanking core binding motifs, the expected effect size range is relatively narrow and final equilibrium concentration differences are expected to be small. However, it is unclear at which point the assumption of accuracy breaks down. Here, we simulate equilibrium binding and quantitation by sequencing in an attempt to answer three questions central to the efficacy of sequencing-based quantitative equilibrium binding assays:
+
+1. It is more cost effective to sequence a single input library used across multiple experiments as a proxy for the unbound material than to sequence the unbound material for each assay run. At which assay design point does the input material become a poor proxy for the unbound material?
+
+2. A large error source in these types of assays is stochastic sampling noise from the quantitation by sequencing. This error can be reduced through the use of modeling techniques. For which assay designs does sequencing noise dominate noise introduced by the choice to use the input library instead of the unbound material?
+
+3. What affinity range can be probed accurately and reasonably using equilibrium binding, separation of bound and unbound substrates, and quantitation by sequencing?
+
+## Data preparation
+
+I used the `simbind` Python utility to simulate assays querying binding energies for a range of energies and distributions, substrate library sizes, and sequencing depths. Across all libraries, I make the following assumptions:
+
+1. Each substrate in the library is present in the same initial concentration.
+
+2. Since simulation of 1,000,000+ sequences is computationally intractable, we instead uniformly sample 100 substrates across the energetic range and use one high concentration sequence as a stand in for the remaining substrates present in the highest density portion of the distribution.
+
+3. The concentration of the total input material is 1 µM and the concentration of protein in the assay is 30 nM.
+
+4. The concentration of any individual species queried is $\frac{1 \mu M}{n\ species}$.
+
+I begin by reading in the simulated results, which give initial assay conditions, final equilibrium concentrations of each queried species in the bound and unbound fractions and 5 replicates of Monte Carlo sampled simulated sequencing results at varying sequencing depths per bound, unbound, and input sublibraries. I can calculate true and estimated $\Delta \Delta G$ values using both the true equilibrium concentrations as well as the estimated concentrations obtained through sequencing.
+
+```{r setup, warning=FALSE, message=FALSE}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# Read in the data and calculate the ddG values for all
+# the pairs of concentrations and read counts
+data <- fread('~/simbind/data/complete_simulations.csv')
+
+# Get only the concentration data without the sequencing information
+conc_data <- data %>%
+  select(-(depth:input_count)) %>%
+  distinct() %>% 
+  filter(!dummy_bool) %>%
+  group_by(ddG_range, total_species, dummy) %>% 
+  mutate(true_ddG = -log(bound_conc/unbound_conc)*.593,
+         true_ddG = true_ddG - mean(true_ddG),
+         input_conc_ddG = -log(bound_conc/input_conc)*.593,
+         input_conc_ddG = input_conc_ddG - mean(input_conc_ddG))
+
+# Get the data to use for visualization of the sequencing information
+count_data <- data %>%
+  group_by(ddG_range, total_species, dummy) %>% 
+  mutate(true_ddG = -log(bound_conc/unbound_conc)*.593,
+         true_ddG = true_ddG - mean(true_ddG),
+         input_conc_ddG = -log(bound_conc/input_conc)*.593,
+         input_conc_ddG = input_conc_ddG - mean(input_conc_ddG)) %>% 
+  group_by(ddG_range, total_species, dummy, depth) %>%
+  mutate(bound_p = bound_count / sum(bound_count),
+         unbound_p = unbound_count / sum(unbound_count),
+         input_p = input_count / sum(input_count),
+         unbound_count_ddG = -log(bound_p/unbound_p)*.593,
+         input_count_ddG = -log(bound_p/input_p)*.593) %>% 
+  filter(dummy == 50)
+
+# Make the universal presentation theme
+presentation = theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Set global figure options
+knitr::opts_chunk$set(fig.width=8, fig.align = "center") 
+
+# Generate a labeller for the facets
+facet_labeller <- labeller(
+  "ddG_range" = function(value) return(paste0("ddG rng:\n", value)),
+  "total_species" = function(value) return(paste0("Lib size:\n", value)),
+  "dummy" = function(value) return(paste0("Dummy pos:\n", value)),
+  "depth" = function(value) return(paste0("Depth:\n", value)),
+  "replicate" = function(value) return(paste0("Rep:\n", value)))
+```
+
+## Analysis of equilibrium binding concentrations
+
+I begin the analysis by examining the distributions of the input, bound, and unbound concentrations for all species. For all of these analyses, the high concentration "dummy" has been removed and only individual species will be examined.
+
+```{r concentrations, warning=FALSE, message=FALSE}
+## Histograms of concentrations
+# Histogram of input concentrations
+ggplot(conc_data, aes(x = input_conc)) +
+  geom_histogram() +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("Input library concentration") +
+  ylab("Count") +
+  ggtitle("Input library concentration distribution") +
+  presentation
+
+ggsave("~/simbind/figures/input_conc_dist.eps", height = 10, width = 12)
+
+# Histogram of bound concentrations
+ggplot(conc_data, aes(x = bound_conc)) +
+  geom_histogram() +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("Bound library concentration") +
+  ylab("Count") +
+  ggtitle("Bound library concentration distribution") +
+  presentation
+
+ggsave("~/simbind/figures/bound_conc_dist.eps", height = 10, width = 12)
+
+# Histogram of unbound concentrations
+ggplot(conc_data, aes(x = unbound_conc)) +
+  geom_histogram() +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("Unbound library concentration") +
+  ylab("Count") +
+  ggtitle("Unbound library concentration distribution") +
+  presentation
+
+ggsave("~/simbind/figures/unbound_conc_dist.eps", height = 10, width = 12)
+```
+
+From these graphs, we see depletion of the bound and unbound material dependent on $\Delta \Delta G$ range and library size, as would be expected; however, these distributions give us no information as to how these depletion effects scale with affinity. To do this we can plot distributions of the calculated $\Delta \Delta G$ values and compare the concentrations to these calculated $\Delta \Delta G$ values. 
+
+```{r concentration_ratios, warning=FALSE, message=FALSE}
+## Histograms of concentration-based ddG values
+# Histogram of bound/unbound ddGs
+ggplot(conc_data, aes(x = true_ddG)) +
+  geom_histogram() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("Unbound library based ddG") +
+  ylab("Count") +
+  ggtitle("Unbound library concentration-based (true) ddG distribution") +
+  presentation
+
+ggsave("~/simbind/figures/true_conc_ddG_dist.eps", height = 10, width = 12)
+
+# Histogram of bound/input ddGs
+ggplot(conc_data, aes(x = input_conc_ddG)) +
+  geom_histogram() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("Input library based ddG") +
+  ylab("Count") +
+  ggtitle("Input library concentration-based ddG distribution") +
+  presentation
+
+ggsave("~/simbind/figures/input_conc_ddG_dist.eps", height = 10, width = 12)
+```
+
+In the above plots the distribution of the unbound-based$\Delta \Delta G$ values is uniform, as expected given that sequences to examine are uniformly spread across the  $\Delta \Delta G$ value range. However, we start to see pileup of the low $\Delta \Delta G$ values for libraries with large  $\Delta \Delta G$ value spreads when using the input library as a proxy for the unbound material. To examine why this might be happening, I have plotted the relationship of the bound and unbound equilibrium concentrations for each substrate against the $K_d$ of that substrate below.
+
+```{r cencentration_changes, warning=FALSE, message=FALSE}
+# Change in concentrations as a function of K_d
+ggplot(conc_data %>%
+         gather(fraction, conc, bound_conc, unbound_conc) %>%
+         mutate(fraction = ifelse(fraction == "bound_conc", "bound", "unbound"))) +
+  geom_point(aes(x = k_d, y = conc, col = fraction), size = 0.5) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("K_d") +
+  ylab("Concentration") +
+  ggtitle("Bound and unbound concentrations as a function of K_d") +
+  presentation
+
+ggsave("~/simbind/figures/conc_change_by_K_d.eps", height = 10, width = 12)
+```
+
+For high affinity substrates in libraries of large  $\Delta \Delta G$ value spread, the unbound fraction is depleted to a point that log-linear concentration increases for the bound fraction can no longer be sustained. This graph gives the answer to the first of our three main questions. When the concentrations of all unbound substrates are relatively uniform across the library, the probabilities of observing these species during sequencing will be the same as in the uniformly bound input library. This finding indicates that, for the ranges of $\Delta \Delta G$ value spread, library sizes, and distribution center points where the unbound concentrations are relatively uniform, using the input library proxy is acceptable.
+
+```{r ddG_accuracy, warning=FALSE, message=FALSE}
+# Plot the corresponsdence between the true and apparent ddGs
+ggplot(conc_data, aes(x = true_ddG, y = input_conc_ddG)) +
+  geom_hline(aes(yintercept = ddG_range/2), col = 'red', linetype = 2) +
+  geom_hline(aes(yintercept = -ddG_range/2), col = 'red', linetype = 2) +
+  geom_vline(aes(xintercept = ddG_range/2), col = 'green', linetype = 2) +
+  geom_vline(aes(xintercept = -ddG_range/2), col = 'green', linetype = 2) +
+  geom_point(size = .5) +
+  coord_fixed() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("True ddG") +
+  ylab("Input concentration-based apparent ddG") +
+  ggtitle("Correspondence between true and observed (input library-based) ddG") +
+  presentation
+
+ggsave("~/simbind/figures/real_vs_apparent_conc_ddG.eps", height = 10, width = 12)
+```
+
+## Analysis of sequencing-based readout of equilibrium binding concentrations
+
+After calculating equilibrium binding concentrations, I implemented Monte Carlo sampling of the sequences proportional to their concentrations in each sublibrary (bound, unbound, and input). Each sublibrary was sampled at a variety of total sequencing depths and each sampling was replicated 5 times because of variation due to the random nature of the sampling process.
+
+Because the position of the "dummy" substrate did not appear to have a large magnitude effect on the accuracy of the concentrations, I have subset the data to only those with the "dummy"" sequence at the 51st position for simplicity in the visualizations below. I have plotted the distribution of sequencing counts for each combination of library sizes, sequencing depths and $\Delta \Delta G$ value spreads. These distributions combine all 5 replicates of simulated sequencing data.
+
+```{r count_distributions, warning=FALSE, message=FALSE}
+## Histograms of sequencing counts
+# Histogram of input counts
+ggplot(count_data) +
+  geom_bar(aes(x = input_count, fill = as.factor(depth), group = as.factor(depth)),
+           stat = "bin", position = "stack") +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+depth, labeller = facet_labeller) +
+  xlab("Input sequencing counts") +
+  ylab("Count") +
+  labs(fill = "Seq. depth") +
+  ggtitle("Input sequencing count distribution") +
+  presentation
+
+ggsave("~/simbind/figures/input_seq_count_dist.eps", height = 10, width = 12)
+
+# Histogram of bound counts
+ggplot(count_data) +
+  geom_bar(aes(x = bound_count, fill = as.factor(depth), group = as.factor(depth)),
+           stat = "bin", position = "stack") +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+depth, labeller = facet_labeller) +
+  xlab("Bound sequencing counts") +
+  ylab("Count") +
+  labs(fill = "Seq. depth") +
+  ggtitle("Bound sequencing count distribution") +
+  presentation
+
+ggsave("~/simbind/figures/bound_seq_count_dist.eps", height = 10, width = 12)
+
+# Histogram of unbound counts
+ggplot(count_data) +
+  geom_bar(aes(x = unbound_count, fill = as.factor(depth), group = as.factor(depth)),
+           stat = "bin", position = "stack") +
+  scale_x_log10() +
+  facet_grid(ddG_range~total_species+depth, labeller = facet_labeller) +
+  xlab("Unbound sequencing counts") +
+  ylab("Count") +
+  labs(fill = "Seq. depth") +
+  ggtitle("Unbound sequencing count distribution") +
+  presentation
+
+ggsave("~/simbind/figures/unbound_seq_count_dist.eps", height = 10, width = 12)
+```
+
+Here, it is important to note the resemblance between the distributions of input and unbound counts. This resemblance hints at the fact that, after the stochastic sampling noise added as a result of the sequencing process, input still likely serves as a good proxy for unbound in many circumstances. Below I plot the distributions of the ddG values calculated based on the probabilities of observing each species in each library, a proxy measurement for the total concentration in each sublibrary. Note that this histograms combine data across replicates.
+
+```{r count_based_ddG_distributions, warning=FALSE, message=FALSE}
+## Histograms of sequencing count-based ddG values
+# Histogram of bound/unbound ddGs
+ggplot(count_data, aes(x = unbound_count_ddG)) +
+  geom_histogram() +
+  facet_grid(ddG_range~total_species+depth, labeller = facet_labeller) +
+  xlab("Unbound library-based ddG") +
+  ylab("Count") +
+  ggtitle("Unbound library-based ddG distribution") +
+  presentation
+
+ggsave("~/simbind/figures/unbound_seq_ddG_dist.eps", height = 10, width = 12)
+
+# Histogram of bound/input ddGs
+ggplot(count_data, aes(x = input_count_ddG)) +
+  geom_histogram() +
+  facet_grid(ddG_range~total_species+depth, labeller = facet_labeller) +
+  xlab("Input library-based ddG") +
+  ylab("Count") +
+  ggtitle("Input library-based ddG distribution") +
+  presentation
+
+ggsave("~/simbind/figures/input_seq_ddG_dist.eps", height = 10, width = 12)
+```
+
+As expected, we see pileup to the right hand side of the distributions for the input-based libraries more so than for the unbound-based libraries. Below I have plotted the agreement between the input-based and unbound-based estimated $\Delta \Delta G$ values. Here, I have broken out the plots by replicate.
+
+```{r ddG_reproducibility, warning=FALSE, message=FALSE, fig.height = 20, fig.width = 12}
+# Scatter of estimated ddGs from unbound and input fractions
+ggplot(count_data, aes(x = unbound_count_ddG, y = input_count_ddG)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_grid(ddG_range+rep~total_species+depth, labeller = facet_labeller) +
+  xlab("Unbound library-based ddG") +
+  ylab("Input library-based ddG") +
+  ggtitle("Unbound library based ddG") +
+  coord_fixed() +
+  presentation
+
+ggsave("~/simbind/figures/seq_ddG_cor.eps", height = 20, width = 12)
+```
+
+To condense this information, I modeled the $\Delta \Delta G$ values estimated by sequencing bound and unbound by those estimated from the bound and input sequencing libraries. I then extracted the fraction of substrates observed and plotted the $r^2$ value from the model multiplied by the fraction observed as as a function of $\Delta \Delta G$ value spread, faceted by library size and sequencing depth.
+
+```{r modeling, warning=FALSE, message=FALSE}
+library(broom)
+
+cor_data <- count_data %>% 
+  group_by(total_species, ddG_range, depth, rep) %>% 
+  mutate(frac_obs = sum(is.finite(unbound_count_ddG) | is.finite(input_count_ddG)) / n()) %>% 
+  filter(is.finite(unbound_count_ddG), is.finite(input_count_ddG)) %>% 
+  group_by(total_species, ddG_range, depth, rep, frac_obs) %>% 
+  do(glance(lm(unbound_count_ddG~input_count_ddG, data = .)))
+
+ggplot(cor_data, aes(as.factor(ddG_range), r.squared * frac_obs)) +
+  facet_grid(total_species ~ depth, labeller = facet_labeller) +
+  geom_boxplot() +
+  xlab("ddG spread") +
+  ylab("r^2 * fraction of species observed") +
+  ggtitle("Assay accuracy by ddG spread")
+
+ggsave("~/simbind/figures/accuracy.eps", height = 20, width = 12)
+```
+
+Based on this analysis, the most accurate parameterizations for this assay occur when the $\Delta \Delta G$ value spread is between 1 and 8 and the library size is small relative to the depth of sequencing. Since the previously performed simulations exposed the relationship between library size and sequencing depth, this analysis provides the further insight that this assay will be most accurate when the spread in $\Delta \Delta G$ values is between 1 and 8. This coincides loosely with the range of observed impacts of flanking sequences ranging all the way to changes within the core binding motif of a TFBS.
