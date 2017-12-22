@@ -212,7 +212,7 @@ fread("data/Manuscript_Data/titrationseq_mono.txt", header = F) %>%
   print()
 ```
 
-## Figure S1A: Monte Carlo parameter grid
+## Figure S1: Monte Carlo parameter grid
 ```{r, warning=FALSE, message=FALSE, fig.width=10, fig.height=10}
 # read data
 returnDf2 =
@@ -268,9 +268,110 @@ ggsave("images/S1B.png", plot = S1B, height = 13, width = 13, units = "cm")
 ggsave("images/S1B.eps", plot = S1B, height = 13, width = 13, units = "cm")
 ```
 
-## Figure S2: Replicate raw ddG distributions
+## Figure S2: Ligand depletion and effect on apparent ddG
+
 ```{r}
-S2 = ggplot(counts.df %>% 
+data <- fread("data/Simulation_Data/complete_simulations.csv")
+
+# Generate a labeller for the facets
+facet_labeller <- labeller(
+  "ddG_range" = function(value) return(paste0("ddG rng:\n", value)),
+  "total_species" = function(value) return(paste0("Lib size:\n", value)),
+  "dummy" = function(value) return(paste0("Dummy:\n", value)),
+  "depth" = function(value) return(paste0("Depth:\n", value)),
+  "replicate" = function(value) return(paste0("Rep:\n", value)))
+
+# Get only the concentration data without the sequencing information
+conc_data <- data %>%
+  select(-(depth:input_count)) %>%
+  distinct() %>% 
+  filter(!dummy_bool) %>%
+  group_by(ddG_range, total_species, dummy) %>% 
+  mutate(true_ddG = -log(bound_conc/unbound_conc)*.593,
+         true_ddG = true_ddG - mean(true_ddG),
+         input_conc_ddG = -log(bound_conc/input_conc)*.593,
+         input_conc_ddG = input_conc_ddG - mean(input_conc_ddG))
+
+# Get the data to use for visualization of the sequencing information
+count_data <- data %>%
+  group_by(ddG_range, total_species, dummy) %>% 
+  mutate(true_ddG = -log(bound_conc/unbound_conc)*.593,
+         true_ddG = true_ddG - mean(true_ddG),
+         input_conc_ddG = -log(bound_conc/input_conc)*.593,
+         input_conc_ddG = input_conc_ddG - mean(input_conc_ddG)) %>% 
+  group_by(ddG_range, total_species, dummy, depth) %>%
+  mutate(bound_p = bound_count / sum(bound_count),
+         unbound_p = unbound_count / sum(unbound_count),
+         input_p = input_count / sum(input_count),
+         unbound_count_ddG = -log(bound_p/unbound_p)*.593,
+         input_count_ddG = -log(bound_p/input_p)*.593) %>% 
+  filter(dummy == 50)
+
+# Change in concentrations as a function of K_d
+colPal = brewer.pal(9,"Set1")
+
+S2A <- ggplot(conc_data %>%
+         gather(fraction, conc, bound_conc, unbound_conc) %>%
+         mutate(fraction = ifelse(fraction == "bound_conc", "bound", "unbound"))) +
+  presentation +
+  geom_point(aes(x = k_d, y = conc, col = fraction), size = 0.2) +
+  scale_color_manual("",values = colPal[1:2]) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("True Kd") +
+  ylab("Concentration") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 4),
+        axis.text.y = element_text(size = 4),
+        legend.key.size = unit(0.3,"cm"),
+        strip.text = element_text(size = 4))
+
+ggsave("images/S2A.png", plot = S2A, height = 10, width = 12, units = "cm")
+ggsave("images/S2A.eps", plot = S2A, height = 10, width = 12, units = "cm")
+
+# Plot the corresponsdence between the true and apparent ddGs
+S2B <- ggplot(conc_data, aes(x = true_ddG, y = input_conc_ddG)) +
+  presentation +
+  geom_hline(aes(yintercept = ddG_range/2), col = 'red', linetype = 2) +
+  geom_hline(aes(yintercept = -ddG_range/2), col = 'red', linetype = 2) +
+  geom_vline(aes(xintercept = ddG_range/2), col = 'green', linetype = 2) +
+  geom_vline(aes(xintercept = -ddG_range/2), col = 'green', linetype = 2) +
+  geom_point(size = .5) +
+  coord_fixed() +
+  facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
+  xlab("True ddG") +
+  ylab("Input concentration-based apparent ddG") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 4))
+
+ggsave("images/S2B.png", plot = S2B, height = 10, width = 12, units = "cm")
+ggsave("images/S2B.eps", plot = S2B, height = 10, width = 12, units = "cm")
+
+library(broom)
+
+cor_data <- count_data %>% 
+  group_by(total_species, ddG_range, depth, rep) %>% 
+  mutate(frac_obs = sum(is.finite(unbound_count_ddG) | is.finite(input_count_ddG)) / n()) %>% 
+  filter(is.finite(unbound_count_ddG), is.finite(input_count_ddG)) %>% 
+  group_by(total_species, ddG_range, depth, rep, frac_obs) %>% 
+  do(glance(lm(unbound_count_ddG~input_count_ddG, data = .)))
+
+S2C <- ggplot(cor_data, aes(as.factor(ddG_range), r.squared * frac_obs)) +
+  presentation +
+  facet_grid(total_species ~ depth, labeller = facet_labeller) +
+  geom_boxplot() +
+  xlab("ddG spread") +
+  ylab("r^2 * fraction of species observed") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(size = 4))
+
+ggsave("images/S2C.png", plot = S2C, height = 10, width = 12, units = "cm")
+ggsave("images/S2C.png", plot = S2C, height = 10, width = 12, units = "cm")
+```
+
+## Figure S3: Replicate raw ddG distributions
+```{r}
+S3 = ggplot(counts.df %>% 
          mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
                 protein = factor(protein,
                                 levels = c("Pho4", "Cbf1")),
@@ -282,11 +383,11 @@ S2 = ggplot(counts.df %>%
   xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol")))) +
   ylab("Count")
 
-ggsave("images/S2.png",S2, height = 5, width = 10, units = "cm")
-ggsave("images/S2.eps",S2, height = 5, width = 10, units = "cm")
+ggsave("images/S3.png",S3, height = 5, width = 10, units = "cm")
+ggsave("images/S3.eps",S3, height = 5, width = 10, units = "cm")
 ```
 
-## Figure S3: raw ddG among Pho4 replicates
+## Figure S4: raw ddG among Pho4 replicates
 ```{r}
 wideTable = 
   bind_rows(left_join(counts.df %>% 
@@ -309,7 +410,7 @@ wideTable =
 
   
 # all cross pairs
-S3 = ggplot(wideTable) + 
+S4 = ggplot(wideTable) + 
   presentation +
   geom_hex(aes(Pho4_1,Pho4_2), bins = 50) + 
   theme(aspect.ratio = 1,
@@ -323,11 +424,11 @@ S3 = ggplot(wideTable) +
                        breaks = c(1, 10, 100, 1000, 10000)) +
   facet_grid(. ~ depth)
 
-ggsave("images/S3.png",S3, height = 5, width = 10, units = "cm")
-ggsave("images/S3.eps",S3, height = 5, width = 10, units = "cm")
+ggsave("images/S4.png",S4, height = 5, width = 10, units = "cm")
+ggsave("images/S4.eps",S4, height = 5, width = 10, units = "cm")
 ```
 
-## Figure S4: Neural network training curves
+## Figure S5: Neural network training curves
 ```{r}
 cbf1_training <- read.table("data/Manuscript_Data/cbf1_model.acc", header = TRUE) %>% 
   gather(dataset, RMSE, -epoch) %>% 
@@ -343,7 +444,7 @@ training_data <- bind_rows(cbf1_training, pho4_training) %>%
   mutate(protein = factor(protein, levels = c("Pho4", "Cbf1")))
 
 colPal = brewer.pal(9,"Set1")
-S4 = ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
+S5 = ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
   geom_line() + 
   presentation +
   scale_color_manual("",values = colPal[1:2]) +
@@ -353,13 +454,13 @@ S4 = ggplot(training_data, aes(epoch, RMSE, color = dataset)) +
         legend.key.size = unit(0.3,"cm")) +
   facet_grid(protein ~ ., scales = "free_y")
 
-ggsave("images/S4.png", S4, height = 5, width = 7, units = "cm")
-ggsave("images/S4.eps", S4, height = 5, width = 7, units = "cm")
+ggsave("images/S5.png", S5, height = 5, width = 7, units = "cm")
+ggsave("images/S5.eps", S5, height = 5, width = 7, units = "cm")
 ```
 
-## Figure S5: NN-derived ddG histograms
+## Figure S6: NN-derived ddG histograms
 ```{r}
-S5 = ggplot(countsNN_scaled %>% 
+S6 = ggplot(countsNN_scaled %>% 
          mutate(protein = ifelse(protein == "pho4", "Pho4", "Cbf1"),
                 protein = factor(protein,
                                 levels = c("Pho4", "Cbf1")))) + 
@@ -370,11 +471,11 @@ S5 = ggplot(countsNN_scaled %>%
   xlab(expression(bold(paste("Neural network predicted ", Delta, Delta, "G, kcal/mol")))) +
   ylab("Count")
 
-ggsave("images/S5.png", S5, height = 5, width = 7, units = "cm")
-ggsave("images/S5.eps", S5, height = 5, width = 7, units = "cm")
+ggsave("images/S6.png", S6, height = 5, width = 7, units = "cm")
+ggsave("images/S6.eps", S6, height = 5, width = 7, units = "cm")
 ```
 
-## Figure S6: Individual Pho4 + Cbf1 titration binding curves
+## Figure S7: Individual Pho4 + Cbf1 titration binding curves
 ```{r}
 colPal = colorRampPalette(c("#0057E7", "#D62D20"))(32)
 pho4Curves = 
@@ -391,7 +492,7 @@ pho4Curves =
   mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
   mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
 
-S6A = ggplot(pho4Curves) +
+S7A = ggplot(pho4Curves) +
   geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
   geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
   presentation +
@@ -404,8 +505,8 @@ S6A = ggplot(pho4Curves) +
   facet_wrap( ~ flank, nrow=6) +
   scale_color_manual(values = (colPal))
 
-ggsave("images/S6A.png", plot = S6A, height = 17, width = 13, units = "cm")
-ggsave("images/S6A.eps", plot = S6A, height = 17, width = 13, units = "cm")
+ggsave("images/S7A.png", plot = S7A, height = 17, width = 13, units = "cm")
+ggsave("images/S7A.eps", plot = S7A, height = 17, width = 13, units = "cm")
 
 cbf1Curves = 
   fread("data/Manuscript_Data/cbf1BindingCurves.csv", sep = ",", header = T) %>%
@@ -421,7 +522,7 @@ cbf1Curves =
   mutate(flank = ifelse(index == "ID32","negative control",flank)) %>%
   mutate(flank = factor(flank, levels = arrange(.,estimate) %>% .$flank %>% unique()))
 
-S6B = ggplot(cbf1Curves) +
+S7B = ggplot(cbf1Curves) +
   geom_point(aes(Conc,fBound,color=flank), size = 0.01) +
   geom_line(aes(Conc,.fitted,color=flank), size = 0.2) +
   presentation +
@@ -434,11 +535,11 @@ S6B = ggplot(cbf1Curves) +
   facet_wrap( ~ flank, nrow=6) +
   scale_color_manual(values = (colPal))
 
-ggsave("images/S6B.png", plot = S6B, height = 17, width = 13, units = "cm")
-ggsave("images/S6B.eps", plot = S6B, height = 17, width = 13, units = "cm")
+ggsave("images/S7B.png", plot = S7B, height = 17, width = 13, units = "cm")
+ggsave("images/S7B.eps", plot = S7B, height = 17, width = 13, units = "cm")
 ```
 
-## Figure S7: Histogram of core vs flank
+## Figure S8: Histogram of core vs flank
 ```{r}
 coreDf = 
   fread("data/Manuscript_Data/core_mutation_ddG.txt", header = T) %>% 
@@ -454,7 +555,7 @@ coreDf =
          protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 colPal = brewer.pal(9,"Set1")
-S7 = ggplot(coreDf) +
+S8 = ggplot(coreDf) +
   presentation +
   theme(aspect.ratio = 1,
         legend.key.size = unit(0.3,"cm"),
@@ -465,12 +566,11 @@ S7 = ggplot(coreDf) +
   xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol")))) +
   scale_fill_manual("", values = colPal[1:2])
 
-ggsave("images/S7.png", plot = S7, height = 4.5, width = 8.7, units = "cm")
-ggsave("images/S7.eps", plot = S7, height = 4.5, width = 8.7, units = "cm")
-
+ggsave("images/S8.png", plot = S8, height = 4.5, width = 8.7, units = "cm")
+ggsave("images/S8.eps", plot = S8, height = 4.5, width = 8.7, units = "cm")
 ```
 
-## Figure S8: Individual replicate binding preferences
+## Figure S9: Individual replicate binding preferences
 ```{r}
 outAdd = addMotif(counts.df, "ddG") %>% 
   mutate(monuc.value = factor(monuc.value, levels = c("T","G","C","A")))
@@ -510,7 +610,7 @@ relAdd = foreach(i = c("pho4","cbf1"), .combine = "rbind")%do%{
   mutate(colPal = as.character(colPal))
 
 # composite textmap
-S8 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
+S9 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2) +
   theme(aspect.ratio = 1, 
@@ -522,11 +622,11 @@ S8 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   facet_wrap(~ protein+rep+count, nrow = 2, labeller = "label_parsed") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("images/S8.png", plot = S8, height = 10, width = 10, units = "cm")
-ggsave("images/S8.eps", plot = S8, height = 10, width = 10, units = "cm")
+ggsave("images/S9.png", plot = S9, height = 10, width = 10, units = "cm")
+ggsave("images/S9.eps", plot = S9, height = 10, width = 10, units = "cm")
 ```
 
-## Figure S9: Cross replication of mononucleotide model coefficients
+## Figure S10: Cross replication of mononucleotide model coefficients
 ```{r}
 training_data <- fread("data/Manuscript_Data/train_seqs.txt", header = FALSE) %>% 
   rename(flank = V1)
@@ -551,7 +651,7 @@ pairedDf =
                        levels = c(paste("Pho4",1:4,sep="_"), paste("Cbf1",1:3,sep="_")),
                        labels = c(paste("Pho4",1:4,sep=" #"), paste("Cbf1",1:3,sep=" #"))))
 
-S9 = ggplot(pairedDf, aes_string(x = "x", y = "y")) + 
+S10 = ggplot(pairedDf, aes_string(x = "x", y = "y")) + 
   presentation +
   facet_grid(xvar ~ yvar, scales = "free") + 
   geom_point(size = 0.01) + 
@@ -561,11 +661,11 @@ S9 = ggplot(pairedDf, aes_string(x = "x", y = "y")) +
   ylab("Model coefficient") +
   xlab("Model coefficient")
 
-ggsave("images/S9.png", plot = S9, height = 10, width = 10, units = "cm")
-ggsave("images/S9.eps", plot = S9, height = 10, width = 10, units = "cm")
+ggsave("images/S10.png", plot = S10, height = 10, width = 10, units = "cm")
+ggsave("images/S10.eps", plot = S10, height = 10, width = 10, units = "cm")
 ```
 
-## Figure S10: eGFP control binding preference
+## Figure S11: eGFP control binding preference
 ```{r}
 # additive model plots
 outAdd = addMotif(fread("data/Manuscript_Data/countsGF.txt", header = T) %>% 
@@ -590,7 +690,7 @@ relAdd =
     mutate(colPal = as.character(colPal))
 
 # composite textmap
-S10 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
+S11 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   presentation +
   geom_errorbar(aes(x = monuc.pos, ymin = affinityFrac - affinitySEM, ymax = affinityFrac + affinitySEM),size = 0.1,width=0.1) +
   geom_text(aes(label = monuc.value, color = monuc.value), size = 2) +
@@ -601,18 +701,18 @@ S10 = ggplot(relAdd,aes(monuc.pos, affinityFrac)) +
   xlab("Flank position") +
   scale_color_manual(values = c("#55C341","#3036DF","#F0E328","#EF1717"))
 
-ggsave("images/S10.png", plot = S10, height = 5, width = 5, units = "cm")
-ggsave("images/S10.eps", plot = S10, height = 5, width = 5, units = "cm")
+ggsave("images/S11.png", plot = S11, height = 5, width = 5, units = "cm")
+ggsave("images/S11.eps", plot = S11, height = 5, width = 5, units = "cm")
 ```
 
-## Figure S11: Cbf1 + Pho4 LASSO 10-fold CV confidence interval + extracted coefficients table
+## Figure S12: Cbf1 + Pho4 LASSO 10-fold CV confidence interval + extracted coefficients table
 ```{r}
 cvLasso = bind_rows(fread("data/Manuscript_Data/lassoCV_pho4.txt", header = T) %>% mutate(protein = "Pho4"),
                     fread("data/Manuscript_Data/lassoCV_cbf1.txt", header = T) %>% mutate(protein = "Cbf1")) %>%
   mutate(protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # CV plot
-S11 = ggplot(cvLasso) +
+S12 = ggplot(cvLasso) +
   presentation + 
   geom_errorbar(aes(x = lambda, ymax = conf.high, ymin = conf.low), size = 0.20) +
   theme(aspect.ratio = 1) +
@@ -621,8 +721,8 @@ S11 = ggplot(cvLasso) +
   ylab("Mean squared error") +
   facet_grid(protein ~ ., scales = "free")
 
-ggsave("images/S11.png", plot = S11, height = 7, width = 7, units = "cm")
-ggsave("images/S11.eps", plot = S11, height = 7, width = 7, units = "cm")
+ggsave("images/S12.png", plot = S12, height = 7, width = 7, units = "cm")
+ggsave("images/S12.eps", plot = S12, height = 7, width = 7, units = "cm")
 ```
 
 ## INCLUDE CSV: LASSO
@@ -630,7 +730,7 @@ ggsave("images/S11.eps", plot = S11, height = 7, width = 7, units = "cm")
 write.table(cvLasso, "data/Manuscript_Data/cv_lasso.csv", sep = ",", row.names = F, col.names = T, quote = F)
 ```
 
-## Figure S12: Cbf1 + Pho4 LASSO magnitudes
+## Figure S13: Cbf1 + Pho4 LASSO magnitudes
 ```{r}
 dfVar = bind_rows(fread("data/Manuscript_Data/dfVar_cbf1.txt", header =T) %>% mutate(protein = "Cbf1"),
                   fread("data/Manuscript_Data/dfVar_pho4.txt", header =T) %>% mutate(protein = "Pho4")) %>%
@@ -670,9 +770,9 @@ p2 = ggplot(dfVar %>%
   xlab("") +
   scale_color_manual("", values = colPal[3:4])
   
-S12 = cowplot::plot_grid(p2,p1,nrow = 2,scale = c(0.98,1), align = "v")  
-ggsave("images/S12.png", plot = S12, height = 10, width = 10, units = "cm")  
-ggsave("images/S12.eps", plot = S12, height = 10, width = 10, units = "cm") 
+S13 = cowplot::plot_grid(p2,p1,nrow = 2,scale = c(0.98,1), align = "v")  
+ggsave("images/S13.png", plot = S13, height = 10, width = 10, units = "cm")  
+ggsave("images/S13.eps", plot = S13, height = 10, width = 10, units = "cm") 
 
 # analysis of coef differences
 dfVar %>% 
@@ -681,7 +781,7 @@ dfVar %>%
             maxval = max(coef))
 ```
 
-## Figure S13: All titration measurement correlations
+## Figure S14: All titration measurement correlations
 ```{r}
 refs =
   bind_rows(std_kd %>% 
@@ -698,7 +798,7 @@ refs =
                      source = "Maerkl et al.") %>% 
               select(flank,protein=V3, stdE = V2, source)) %>% 
   group_by(protein,source) %>% 
-  mutate(stdE = stdE-min(stdE)) %>% 
+  mutate(stdE = stdE-mean(stdE)) %>% 
   ungroup()
     
 # NN-complete
@@ -719,9 +819,9 @@ corr_full =
   bind_rows(corr_mat1, corr_mat2) %>% 
   mutate(model = factor(model, levels = c("unprocessed","neural network")),
          protein = factor(protein, levels = c("Pho4", "Cbf1")),
-         source = factor(source, levels = c("present","Rajkumar et al.","Maerkl et al.")))
-
-#write.table(corr_full, "~/Desktop/ref_val.txt", col.names = T, row.names = F, quote = F, sep = "\t")
+         source = factor(source, levels = c("present","Rajkumar et al.","Maerkl et al."))) %>% 
+  group_by(protein, source, model) %>% 
+  mutate(.fitted = .fitted - mean(.fitted))
 
 labelDf = 
   corr_full %>% 
@@ -734,25 +834,27 @@ labelDf =
          yVal = minval + (0.1* range))
 
 colPal = brewer.pal(9,"Set1")
-S13 = ggplot(corr_full) +
+S14 = ggplot(corr_full) +
+  geom_abline(slope = 1, color = "gray", linetype = 2) +
   presentation + 
   theme(aspect.ratio = 1,
         legend.position = "none") +
   geom_point(aes(.fitted,stdE, color = source), size = 0.25) +
-  facet_grid(source+protein ~ model, scales = "free") +
+  facet_grid(source+protein ~ model) +
   geom_label(data = labelDf, aes(x = 1, y = yVal, label = r2), 
              inherit.aes = F, size = 2, 
              label.padding = unit(0.1, "lines"),
              label.r = unit(0.1, "lines")) +
   ylab(expression(bold(paste("Titration ", Delta,Delta, "G, kcal/mol")))) +
   xlab(expression(bold(paste("Sequencing-based ", Delta, Delta, "G, kcal/mol")))) +
-  scale_color_manual("",values = colPal[1:3])
+  scale_color_manual("",values = colPal[1:3]) +
+  coord_fixed()
 
-ggsave("images/S13.png", plot = S13, height = 12, width = 8, units = "cm") 
-ggsave("images/S13.eps", plot = S13, height = 12, width = 8, units = "cm") 
+ggsave("images/S14.png", plot = S14, height = 12, width = 8, units = "cm")
+ggsave("images/S14.eps", plot = S14, height = 12, width = 8, units = "cm") 
 ```
 
-## Figure S14: Pho4 transcription rate and induction
+## Figure S15: Pho4 transcription rate and induction
 ```{r}
 rateVal = 
   fread("data/Manuscript_Data/transcriptionRate.txt", header = F, sep = "\t", stringsAsFactors = F) %>%
@@ -790,13 +892,13 @@ p2 = ggplot(expVal,aes(scaled_dG, induction)) +
   ylab("Induction, fold change") +
   xlab(expression(bold(paste("Sequencing ", Delta, "G, kcal/mol"))))
 
-S14 = cowplot::plot_grid(p1,p2,nrow=1,scale = c(1,1))
+S15 = cowplot::plot_grid(p1,p2,nrow=1,scale = c(1,1))
 
-ggsave("images/S14.png", plot = S14, height = 5, width = 8, units = "cm")
-ggsave("images/S14.eps", plot = S14, height = 5, width = 8, units = "cm")
+ggsave("images/S15.png", plot = S15, height = 5, width = 8, units = "cm")
+ggsave("images/S15.eps", plot = S15, height = 5, width = 8, units = "cm")
 ```
 
-## Figure S15: landscapes
+## Figure S16: landscapes
 ```{r}
 shockDf = 
   bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
@@ -806,7 +908,7 @@ shockDf =
          protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # circle plot (only ChIP)
-S15 = ggplot(shockDf) +
+S16 = ggplot(shockDf) +
   theme_bw() +
   geom_point(aes(t,cc,color=ddG), size = 0.5) +
   coord_polar() +
@@ -829,10 +931,10 @@ S15 = ggplot(shockDf) +
   scale_y_continuous(breaks = 0:10) +
   facet_wrap(~ protein, nrow = 1)
 
-ggsave("images/S15.png", plot = S15, height = 8, width = 15, units = "cm", dpi = 300)
+ggsave("images/S16.png", plot = S16, height = 8, width = 15, units = "cm", dpi = 300)
 ```
 
-## S16: landscape density
+## S17: landscape density
 ```{r}
 shockDf = 
   bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
@@ -842,7 +944,7 @@ shockDf =
          protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 colPal = colorRampPalette(brewer.pal(9,"YlOrRd"))(10)
-S16 = ggplot(shockDf %>% 
+S17 = ggplot(shockDf %>% 
          filter(cc < 10) %>% 
          mutate(cc = paste0("Hamming dist. = ",cc))) +
   presentation +
@@ -854,11 +956,11 @@ S16 = ggplot(shockDf %>%
   ylab("Density") +
   xlab(expression(bold(paste(Delta, Delta, "G, kcal/mol"))))
 
-ggsave("images/S16.png", plot = S16, height = 15, width = 15, units = "cm", dpi = 600)
-ggsave("images/S16.eps", plot = S16, height = 15, width = 15, units = "cm", dpi = 600)
+ggsave("images/S17.png", plot = S17, height = 15, width = 15, units = "cm", dpi = 600)
+ggsave("images/S17.eps", plot = S17, height = 15, width = 15, units = "cm", dpi = 600)
 ```
 
-## S17: Hamming distance summary
+## S18: Hamming distance summary
 ```{r}
 overlayDf = 
   left_join(bind_rows(fread(paste0("data/Manuscript_Data/shock_pho4.txt"), header = T) %>% mutate(protein = "pho4"),
@@ -881,7 +983,7 @@ labelDf =
   mutate(meanval = round(meanval,2), 
          colScale = meanval)
 
-S17 = ggplot(overlayDf %>% mutate(cc = factor(cc, levels = 0:10)) %>% group_by(cc,protein) %>% summarise(meanval = sum(occ, na.rm = T))) +
+S18 = ggplot(overlayDf %>% mutate(cc = factor(cc, levels = 0:10)) %>% group_by(cc,protein) %>% summarise(meanval = sum(occ, na.rm = T))) +
   geom_bar(aes(cc, meanval, group=cc), stat = "identity", fill = "black",width = 0.85) +
   geom_label(data = labelDf, aes(cc, ysum, label=meanval, fill = colScale), 
              inherit.aes = F, 
@@ -899,7 +1001,7 @@ S17 = ggplot(overlayDf %>% mutate(cc = factor(cc, levels = 0:10)) %>% group_by(c
   theme(aspect.ratio = 0.5) +
   scale_fill_gradient2(expression(bold(paste("Mean ",Delta, Delta,"G, kcal/mol"))),low = "#0057E7", high = "#D62D20", mid = "gray90", midpoint = 0)
 
-ggsave("images/S17.png", plot = S17, height = 10, width = 11.5, units = "cm")
-ggsave("images/S17.eps", plot = S17, height = 10, width = 11.5, units = "cm")
+ggsave("images/S18.png", plot = S18, height = 10, width = 11.5, units = "cm")
+ggsave("images/S18.eps", plot = S18, height = 10, width = 11.5, units = "cm")
 
 ```

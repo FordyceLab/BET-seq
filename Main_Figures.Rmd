@@ -289,7 +289,7 @@ p1 = ggplot(returnDf2 ) +
 ggsave("images/f2pB.svg", plot = p1, height = 10.5, width = 8.7, units = "cm", dev = svglite)
 ```
 
-## Panel C: Flank library depth simultion
+## Panel C: Flank library depth simulation
 ```{r, eval=FALSE}
 # FYI spec-seq = 5.4kt (3.2 kcal/mol) affinity range
 readDat =
@@ -445,7 +445,8 @@ test =
   outAdd %>% 
   bind_rows(.,data.frame(monuc.pos = "0", protein = "Pho4")) %>% 
   bind_rows(.,data.frame(monuc.pos = "0", protein = "Cbf1")) %>% 
-  mutate(monuc.pos = factor(monuc.pos, levels = paste0(-5:5)))
+  mutate(monuc.pos = factor(monuc.pos, levels = paste0(-5:5))) %>%
+  mutate(protein = factor(protein, levels = c("Pho4","Cbf1")))
 
 # composite textmap
 p1 = ggplot(test,aes(monuc.pos, monuc.meanval)) +
