@@ -10,6 +10,7 @@ The following files are in this root directory:
 - `SI.Rmd` - Code to generate all figures and tables in the supporting information
 - `README.md` - This README
 - `data` - All of the processed data files
+- `data_processing.py` - Script to process raw fastq files
 - `figures` - All of the final typeset figures from the main text
 - `images` - All of the subplot/subfigure images
 - `neural_network` - Code to run the neural network model

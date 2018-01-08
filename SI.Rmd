@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 # Set the working directory
-WORKING_DIR = "~/Flanks"
+WORKING_DIR = "~/BET-seq"
 
 # Run the setup file to read in and process all data
 setwd(WORKING_DIR)
@@ -319,7 +319,7 @@ S2A <- ggplot(conc_data %>%
   scale_x_log10() +
   scale_y_log10() +
   facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
-  xlab("True Kd") +
+  xlab(TeX("\\textbf{True $K_d$}")) +
   ylab("Concentration") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 4),
         axis.text.y = element_text(size = 4),
@@ -339,8 +339,8 @@ S2B <- ggplot(conc_data, aes(x = true_ddG, y = input_conc_ddG)) +
   geom_point(size = .5) +
   coord_fixed() +
   facet_grid(ddG_range~total_species+dummy, labeller = facet_labeller) +
-  xlab("True ddG") +
-  ylab("Input concentration-based apparent ddG") +
+  xlab(expression(bold(paste("True ", Delta, Delta, "G, kcal/mol")))) +
+  ylab(expression(bold(paste("Input concentration-based apparent ", Delta, Delta, "G, kcal/mol")))) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         strip.text = element_text(size = 4))
 
@@ -360,8 +360,8 @@ S2C <- ggplot(cor_data, aes(as.factor(ddG_range), r.squared * frac_obs)) +
   presentation +
   facet_grid(total_species ~ depth, labeller = facet_labeller) +
   geom_boxplot() +
-  xlab("ddG spread") +
-  ylab("r^2 * fraction of species observed") +
+  xlab(expression(bold(paste(Delta, Delta, "G spread, kcal/mol")))) +
+  ylab(TeX("\\textbf{$r^2 \\times$  fraction of species observed}")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         strip.text = element_text(size = 4))
 
